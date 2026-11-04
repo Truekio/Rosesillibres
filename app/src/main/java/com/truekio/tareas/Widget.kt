@@ -65,7 +65,7 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
             .fillMaxSize()
             .background(GlanceTheme.colors.widgetBackground)
             .cornerRadius(24.dp)
-            .padding(12.dp)
+            .padding(14.dp)
     ) {
         Row(
             modifier = GlanceModifier.fillMaxWidth().padding(bottom = 6.dp),
@@ -76,14 +76,14 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
                 modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity<MainActivity>()),
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 17.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
             Box(
                 modifier = GlanceModifier
-                    .size(32.dp)
-                    .cornerRadius(16.dp)
+                    .size(44.dp)
+                    .cornerRadius(22.dp)
                     .background(GlanceTheme.colors.primary)
                     .clickable(
                         actionStartActivity(
@@ -98,7 +98,7 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
                     text = "+",
                     style = TextStyle(
                         color = GlanceTheme.colors.onPrimary,
-                        fontSize = 20.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -108,7 +108,7 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
             Text(
                 text = "Todo hecho 🎉",
                 modifier = GlanceModifier.padding(top = 8.dp),
-                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 14.sp)
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 16.sp)
             )
         } else {
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
@@ -127,15 +127,15 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 7.dp)
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = GlanceModifier
-                .width(4.dp)
-                .height(34.dp)
-                .cornerRadius(2.dp)
+                .width(5.dp)
+                .height(44.dp)
+                .cornerRadius(3.dp)
                 .background(ColorProvider(color))
         ) {}
         Spacer(modifier = GlanceModifier.width(10.dp))
@@ -145,7 +145,7 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
                 maxLines = 1,
                 style = TextStyle(
                     color = GlanceTheme.colors.onSurface,
-                    fontSize = 14.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -154,14 +154,14 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
                 maxLines = 1,
                 style = TextStyle(
                     color = if (overdue) GlanceTheme.colors.error else GlanceTheme.colors.onSurfaceVariant,
-                    fontSize = 12.sp
+                    fontSize = 14.sp
                 )
             )
         }
         Box(
             modifier = GlanceModifier
-                .size(32.dp)
-                .cornerRadius(16.dp)
+                .size(48.dp)
+                .cornerRadius(24.dp)
                 .background(GlanceTheme.colors.secondaryContainer)
                 .clickable(actionRunCallback<DoneAction>(actionParametersOf(IdKey to t.id))),
             contentAlignment = Alignment.Center
@@ -170,7 +170,7 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
                 text = "✓",
                 style = TextStyle(
                     color = GlanceTheme.colors.onSecondaryContainer,
-                    fontSize = 16.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
