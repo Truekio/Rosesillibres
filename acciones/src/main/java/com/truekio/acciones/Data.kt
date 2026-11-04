@@ -123,7 +123,7 @@ object Store {
                 news.value = List(a.length()) {
                     val o = a.getJSONObject(it)
                     News(o.getString("t"), o.getString("u"), o.getString("s"), o.getString("k"), o.getLong("d"), o.optBoolean("e", true))
-                }
+                }.filter { newsKey(it) !in dismissed.value }
             }
         }
     }
@@ -160,7 +160,7 @@ object Store {
         next.add(key)
         val trimmed = if (next.size > 1000) LinkedHashSet(next.toList().takeLast(1000)) else next
         dismissed.value = trimmed
-        sp?.edit()?.putString("dismissed", JSONArray(trimmed.toList()).toString())?.apply()
+        sp?.edit()?.putString("dismissed", JSONArray(trimmed.toList()).toString())?.commit()
         setNews(news.value.filter { newsKey(it) != key })
     }
 
@@ -217,15 +217,20 @@ object Store {
         sp?.edit()?.putStringSet("sources", next)?.apply()
     }
 
+    private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** Actualiza en memoria al instante y guarda a disco en segundo plano. */
     @Synchronized
     fun setNews(list: List<News>) {
         news.value = list
-        runCatching {
-            val a = JSONArray()
-            list.forEach {
-                a.put(JSONObject().put("t", it.title).put("u", it.url).put("s", it.source).put("k", it.ticker).put("d", it.time).put("e", it.es))
+        io.execute {
+            runCatching {
+                val a = JSONArray()
+                list.forEach {
+                    a.put(JSONObject().put("t", it.title).put("u", it.url).put("s", it.source).put("k", it.ticker).put("d", it.time).put("e", it.es))
+                }
+                file?.writeText(a.toString())
             }
-            file?.writeText(a.toString())
         }
     }
 

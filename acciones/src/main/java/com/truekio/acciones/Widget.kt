@@ -35,7 +35,7 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
-import androidx.glance.appwidget.updateAll
+import androidx.glance.appwidget.update
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -48,7 +48,7 @@ class AccionesWidget : GlanceAppWidget() {
         Store.init(context)
         val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
         val excluded = Store.excluded.value
-        val news = Store.news.value.filter { it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excluded) }.take(30)
+        val news = Store.news.value.filter { it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excluded) }.take(20)
         val hasTickers = Store.tickers.value.isNotEmpty()
         provideContent {
             GlanceTheme {
@@ -176,7 +176,7 @@ class DismissAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         Store.init(context)
         parameters[KeyParam]?.let { Store.dismiss(it) }
-        AccionesWidget().updateAll(context)
+        AccionesWidget().update(context, glanceId)
     }
 }
 

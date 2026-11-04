@@ -106,8 +106,12 @@ object NewsFetcher {
     }
 
     /** ¿El titular contiene alguna palabra/expresión excluida (como palabra completa)? */
+    private val rxCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
     fun hasExcluded(title: String, words: List<String>): Boolean = words.any { w ->
-        Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(w) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        rxCache.getOrPut(w) {
+            Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(w) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+        }.containsMatchIn(title)
     }
 
     /** Medios de pago (o bloqueados por el usuario): por nombre del medio o por dominio. */
