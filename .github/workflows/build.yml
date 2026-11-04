@@ -24,20 +24,24 @@ jobs:
           gradle-version: "8.9"
 
       - name: Compilar APK
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleRelease :acciones:assembleRelease --no-daemon --stacktrace
 
       - name: Preparar APK
-        run: cp app/build/outputs/apk/release/app-release.apk Tareas.apk
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Tareas.apk
+          cp acciones/build/outputs/apk/release/acciones-release.apk Acciones.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Tareas-apk
-          path: Tareas.apk
+          path: |
+            Tareas.apk
+            Acciones.apk
 
       - name: Publicar release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ github.run_number }}" Tareas.apk \
-            --title "Tareas v${{ github.run_number }}" \
-            --notes "APK listo para instalar" --latest
+          gh release create "v${{ github.run_number }}" Tareas.apk Acciones.apk \
+            --title "Apps v${{ github.run_number }}" \
+            --notes "Tareas.apk y Acciones.apk, listos para instalar" --latest
