@@ -27,7 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -52,6 +52,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -218,32 +221,53 @@ fun Screen() {
                     )
                 }
             }
-            itemsIndexed(shown) { _, n ->
+            items(shown.distinctBy { newsKey(it) }, key = { newsKey(it) }) { n ->
                 val color = Color(tickerColor(n.ticker))
-                Card(
-                    onClick = { runCatching { uri.openUri(n.url) } },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-                ) {
-                    Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(6.dp).fillMaxHeight().background(color))
-                        Column(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Text(
-                                n.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 3
-                            )
-                            Text(
-                                "${n.ticker} · ${n.source} · ${ago(n.time)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
+                val swipe = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { v ->
+                        if (v != SwipeToDismissBoxValue.Settled) {
+                            Store.dismiss(newsKey(n))
+                            true
+                        } else false
+                    }
+                )
+                SwipeToDismissBox(
+                    state = swipe,
+                    backgroundContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 24.dp),
+                            contentAlignment = if (swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         }
-                        IconButton(onClick = { Store.dismiss(newsKey(n)) }) {
-                            Icon(Icons.Default.Close, contentDescription = "Descartar noticia")
+                    }
+                ) {
+                    Card(
+                        onClick = { runCatching { uri.openUri(n.url) } },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    ) {
+                        Row(Modifier.height(IntrinsicSize.Min)) {
+                            Box(Modifier.width(6.dp).fillMaxHeight().background(color))
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                                Text(
+                                    n.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 3
+                                )
+                                Text(
+                                    "${n.ticker} · ${n.source} · ${ago(n.time)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
