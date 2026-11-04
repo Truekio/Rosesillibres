@@ -124,10 +124,13 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
 private fun TaskRow(t: Task, cat: Category?, now: Long) {
     val color = Color(cat?.color ?: 0xFF64748BL)
     val overdue = t.due < now
+    Box(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 4.dp)) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(vertical = 7.dp)
+            .background(GlanceTheme.colors.surfaceVariant)
+            .cornerRadius(20.dp)
+            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -162,19 +165,20 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
             modifier = GlanceModifier
                 .size(48.dp)
                 .cornerRadius(24.dp)
-                .background(GlanceTheme.colors.secondaryContainer)
+                .background(GlanceTheme.colors.primaryContainer)
                 .clickable(actionRunCallback<DoneAction>(actionParametersOf(IdKey to t.id))),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "✓",
                 style = TextStyle(
-                    color = GlanceTheme.colors.onSecondaryContainer,
+                    color = GlanceTheme.colors.onPrimaryContainer,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
         }
+    }
     }
 }
 
