@@ -211,11 +211,25 @@ fun TaskEditor(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Repeat.values().forEach { r ->
+                            val isWeekdays = repeat == Repeat.WEEKLY && weekdays == 31
                             FilterChip(
-                                selected = repeat == r,
-                                onClick = { repeat = r },
+                                selected = if (r == Repeat.WEEKLY) repeat == r && !isWeekdays else repeat == r,
+                                onClick = {
+                                    repeat = r
+                                    if (r == Repeat.WEEKLY && weekdays == 31) weekdays = 0
+                                },
                                 label = { Text(r.label) }
                             )
+                            if (r == Repeat.DAILY) {
+                                FilterChip(
+                                    selected = isWeekdays,
+                                    onClick = {
+                                        repeat = Repeat.WEEKLY
+                                        weekdays = 31
+                                    },
+                                    label = { Text("Laborables (L–V)") }
+                                )
+                            }
                         }
                     }
                     if (repeat == Repeat.WEEKLY) {

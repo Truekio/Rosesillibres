@@ -178,7 +178,8 @@ object Fmt {
         return when (t.repeat) {
             Repeat.DAILY -> if (n == 1) "Cada día" else "Cada $n días"
             Repeat.WEEKLY -> {
-                if (t.weekdays != 0) {
+                if (t.weekdays == 31) "Laborables (L–V)"
+                else if (t.weekdays != 0) {
                     val names = listOf("L", "M", "X", "J", "V", "S", "D")
                     names.filterIndexed { i, _ -> (t.weekdays and (1 shl i)) != 0 }.joinToString(" ")
                 } else if (n == 1) "Cada semana" else "Cada $n semanas"
