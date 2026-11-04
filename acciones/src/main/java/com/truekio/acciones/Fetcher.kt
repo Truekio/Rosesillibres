@@ -77,9 +77,10 @@ object NewsFetcher {
                 val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
                 val hidden = Store.dismissed.value
                 val blocked = Store.blocked.value
+                val excluded = Store.excluded.value
                 val order = compareByDescending<News> { it.es }.thenByDescending { it.time }
                 val result = fetched
-                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) }
+                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && !hasExcluded(it.title, excluded) }
                     .sortedWith(order)
                     .distinctBy { it.ticker + "|" + norm(it.title) }
                     .groupBy { it.ticker }
@@ -102,6 +103,11 @@ object NewsFetcher {
         val es = listOf(" de ", " el ", " la ", " los ", " las ", " del ", " con ", " por ", " para ", " que ", " una ", " un ", " se ", " su ", " al ").count { t.contains(it) }
         val en = listOf(" the ", " of ", " to ", " and ", " in ", " for ", " on ", " is ", " with ", " at ", " as ", " its ", " from ").count { t.contains(it) }
         return es > en
+    }
+
+    /** ¿El titular contiene alguna palabra/expresión excluida (como palabra completa)? */
+    fun hasExcluded(title: String, words: List<String>): Boolean = words.any { w ->
+        Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(w) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE).containsMatchIn(title)
     }
 
     /** Medios de pago (o bloqueados por el usuario): por nombre del medio o por dominio. */

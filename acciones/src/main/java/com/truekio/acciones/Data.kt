@@ -20,6 +20,12 @@ data class News(
 /** Solo se muestran noticias de los últimos 7 días. */
 const val NEWS_MAX_AGE_MS = 7L * 24 * 3600 * 1000
 
+/** Titulares que contienen estas palabras o expresiones se ocultan (ruido de opciones, etc.). */
+val DEFAULT_EXCLUDED: List<String> = listOf(
+    "opciones", "opción call", "opción put", "opciones call", "opciones put", "call y put", "calls y puts",
+    "calls and puts", "call options", "put options", "options", "strike", "put/call", "iron condor", "straddle"
+)
+
 val DEFAULT_BLOCKED: List<String> = listOf(
     "wall street journal", "wsj.com", "financial times", "ft.com", "bloomberg", "bloomberg.com",
     "barron", "barrons.com", "the economist", "economist.com", "the information", "theinformation.com",
@@ -70,6 +76,7 @@ object Store {
     val feeds = MutableStateFlow<List<Feed>>(emptyList())
     val dismissed = MutableStateFlow<Set<String>>(emptySet())
     val blocked = MutableStateFlow(DEFAULT_BLOCKED)
+    val excluded = MutableStateFlow(DEFAULT_EXCLUDED)
     val news = MutableStateFlow<List<News>>(emptyList())
     val loading = MutableStateFlow(false)
     val lastUpdate = MutableStateFlow(0L)
@@ -84,6 +91,13 @@ object Store {
         tickers.value = (prefs.getString("tickers", "") ?: "").split("|").filter { it.isNotBlank() }
         prefs.getStringSet("sources", null)?.let { sources.value = it.toSet() }
         lastUpdate.value = prefs.getLong("last", 0L)
+        runCatching {
+            val x = prefs.getString("excluded", null)
+            if (x != null) {
+                val xa = JSONArray(x)
+                excluded.value = List(xa.length()) { xa.getString(it) }
+            }
+        }
         runCatching {
             val b = prefs.getString("blocked", null)
             if (b != null) {
@@ -148,6 +162,21 @@ object Store {
         dismissed.value = trimmed
         sp?.edit()?.putString("dismissed", JSONArray(trimmed.toList()).toString())?.apply()
         setNews(news.value.filter { newsKey(it) != key })
+    }
+
+    @Synchronized
+    fun addExcluded(raw: String) {
+        val t = raw.trim().lowercase()
+        if (t.isBlank() || t in excluded.value) return
+        excluded.value = excluded.value + t
+        sp?.edit()?.putString("excluded", JSONArray(excluded.value).toString())?.apply()
+        setNews(news.value.filter { !NewsFetcher.hasExcluded(it.title, listOf(t)) })
+    }
+
+    @Synchronized
+    fun removeExcluded(t: String) {
+        excluded.value = excluded.value.filter { it != t }
+        sp?.edit()?.putString("excluded", JSONArray(excluded.value).toString())?.apply()
     }
 
     @Synchronized

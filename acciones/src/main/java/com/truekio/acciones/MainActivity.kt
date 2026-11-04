@@ -142,7 +142,8 @@ fun Screen() {
     val tags = tickers + feeds.map { it.name }
     val active = filter?.takeIf { it in tags }
     val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
-    val shown = news.filter { (active == null || it.ticker == active) && it.time >= cutoff }
+    val excludedWords by Store.excluded.collectAsState()
+    val shown = news.filter { (active == null || it.ticker == active) && it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excludedWords) }
 
     Scaffold(
         topBar = {
@@ -287,6 +288,8 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
     val sources by Store.sources.collectAsState()
     val feeds by Store.feeds.collectAsState()
     val blocked by Store.blocked.collectAsState()
+    val excluded by Store.excluded.collectAsState()
+    var wordInput by remember { mutableStateOf("") }
     var blockInput by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -399,6 +402,34 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
                             onClick = { Store.removeBlocked(t) },
                             label = { Text(t) },
                             trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Desbloquear $t", modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 14.dp))
+                Text("Palabras excluidas", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Se ocultan los titulares que las contengan (por defecto, noticias de opciones). Toca una para quitarla.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                OutlinedTextField(
+                    value = wordInput,
+                    onValueChange = { wordInput = it },
+                    label = { Text("Palabra o expresión") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { Store.addExcluded(wordInput); wordInput = "" }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+                TextButton(onClick = { Store.addExcluded(wordInput); wordInput = "" }) { Text("Excluir") }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    excluded.forEach { t ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { Store.removeExcluded(t) },
+                            label = { Text(t) },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Quitar $t", modifier = Modifier.size(16.dp)) }
                         )
                     }
                 }
