@@ -141,7 +141,8 @@ fun Screen() {
 
     val tags = tickers + feeds.map { it.name }
     val active = filter?.takeIf { it in tags }
-    val shown = news.filter { active == null || it.ticker == active }
+    val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
+    val shown = news.filter { (active == null || it.ticker == active) && it.time >= cutoff }
 
     Scaffold(
         topBar = {
@@ -285,6 +286,8 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
     val scope = rememberCoroutineScope()
     val sources by Store.sources.collectAsState()
     val feeds by Store.feeds.collectAsState()
+    val blocked by Store.blocked.collectAsState()
+    var blockInput by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -370,6 +373,34 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                HorizontalDivider(Modifier.padding(vertical = 14.dp))
+                Text("Medios bloqueados (de pago)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Sus noticias no se muestran. Escribe el nombre del medio o su dominio (wsj.com). Toca uno para desbloquearlo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                OutlinedTextField(
+                    value = blockInput,
+                    onValueChange = { blockInput = it },
+                    label = { Text("Medio o dominio") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { Store.addBlocked(blockInput); blockInput = "" }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+                TextButton(onClick = { Store.addBlocked(blockInput); blockInput = "" }) { Text("Bloquear") }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    blocked.forEach { t ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { Store.removeBlocked(t) },
+                            label = { Text(t) },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Desbloquear $t", modifier = Modifier.size(16.dp)) }
+                        )
+                    }
                 }
             }
         }

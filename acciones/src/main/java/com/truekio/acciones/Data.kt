@@ -12,7 +12,21 @@ data class News(
     val url: String,
     val source: String,
     val ticker: String,
-    val time: Long
+    val time: Long,
+    val es: Boolean = true,
+    val site: String = ""
+)
+
+/** Solo se muestran noticias de los últimos 7 días. */
+const val NEWS_MAX_AGE_MS = 7L * 24 * 3600 * 1000
+
+val DEFAULT_BLOCKED: List<String> = listOf(
+    "wall street journal", "wsj.com", "financial times", "ft.com", "bloomberg", "bloomberg.com",
+    "barron", "barrons.com", "the economist", "economist.com", "the information", "theinformation.com",
+    "new york times", "nytimes.com", "washington post", "washingtonpost.com",
+    "investor's business daily", "investors.com", "expansión", "expansion.com",
+    "cinco días", "cincodias.elpais.com", "morningstar", "morningstar.com",
+    "business insider", "businessinsider.com", "the times", "thetimes.co.uk", "telegraph"
 )
 
 fun newsKey(n: News) = n.ticker + "|" + n.url
@@ -52,9 +66,10 @@ object Store {
     private var file: File? = null
 
     val tickers = MutableStateFlow<List<String>>(emptyList())
-    val sources = MutableStateFlow(Src.values().map { it.name }.toSet())
+    val sources = MutableStateFlow(Src.values().filter { it != Src.GOOGLE_EN }.map { it.name }.toSet())
     val feeds = MutableStateFlow<List<Feed>>(emptyList())
     val dismissed = MutableStateFlow<Set<String>>(emptySet())
+    val blocked = MutableStateFlow(DEFAULT_BLOCKED)
     val news = MutableStateFlow<List<News>>(emptyList())
     val loading = MutableStateFlow(false)
     val lastUpdate = MutableStateFlow(0L)
@@ -69,6 +84,13 @@ object Store {
         tickers.value = (prefs.getString("tickers", "") ?: "").split("|").filter { it.isNotBlank() }
         prefs.getStringSet("sources", null)?.let { sources.value = it.toSet() }
         lastUpdate.value = prefs.getLong("last", 0L)
+        runCatching {
+            val b = prefs.getString("blocked", null)
+            if (b != null) {
+                val ba = JSONArray(b)
+                blocked.value = List(ba.length()) { ba.getString(it) }
+            }
+        }
         runCatching {
             val da = JSONArray(prefs.getString("dismissed", "[]"))
             dismissed.value = LinkedHashSet(List(da.length()) { da.getString(it) })
@@ -86,7 +108,7 @@ object Store {
                 val a = JSONArray(f.readText())
                 news.value = List(a.length()) {
                     val o = a.getJSONObject(it)
-                    News(o.getString("t"), o.getString("u"), o.getString("s"), o.getString("k"), o.getLong("d"))
+                    News(o.getString("t"), o.getString("u"), o.getString("s"), o.getString("k"), o.getLong("d"), o.optBoolean("e", true))
                 }
             }
         }
@@ -129,6 +151,21 @@ object Store {
     }
 
     @Synchronized
+    fun addBlocked(raw: String) {
+        val t = raw.trim().lowercase()
+        if (t.isBlank() || t in blocked.value) return
+        blocked.value = blocked.value + t
+        sp?.edit()?.putString("blocked", JSONArray(blocked.value).toString())?.apply()
+        setNews(news.value.filter { !NewsFetcher.isBlocked(it, listOf(t)) })
+    }
+
+    @Synchronized
+    fun removeBlocked(t: String) {
+        blocked.value = blocked.value.filter { it != t }
+        sp?.edit()?.putString("blocked", JSONArray(blocked.value).toString())?.apply()
+    }
+
+    @Synchronized
     fun addFeed(f: Feed) {
         if (feeds.value.any { it.url == f.url }) return
         feeds.value = feeds.value + f
@@ -157,7 +194,7 @@ object Store {
         runCatching {
             val a = JSONArray()
             list.forEach {
-                a.put(JSONObject().put("t", it.title).put("u", it.url).put("s", it.source).put("k", it.ticker).put("d", it.time))
+                a.put(JSONObject().put("t", it.title).put("u", it.url).put("s", it.source).put("k", it.ticker).put("d", it.time).put("e", it.es))
             }
             file?.writeText(a.toString())
         }

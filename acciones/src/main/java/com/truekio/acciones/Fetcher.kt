@@ -21,11 +21,13 @@ import java.util.Locale
 
 object NewsFetcher {
     private val mutex = Mutex()
-    private const val MAX_AGE_MS = 30L * 24 * 3600 * 1000
     private const val PER_TAG = 15
     private val INVESTING_FEEDS = listOf(
-        "https://www.investing.com/rss/news_25.xml",
-        "https://www.investing.com/rss/news.xml"
+        "https://es.investing.com/rss/news_25.rss",
+        "https://es.investing.com/rss/news_356.rss",
+        "https://es.investing.com/rss/news.rss",
+        "https://es.investing.com/rss/news_1061.rss",
+        "https://es.investing.com/rss/news_1063.rss"
     )
 
     suspend fun refresh(ctx: Context) {
@@ -64,7 +66,7 @@ object NewsFetcher {
                         jobs += async {
                             runCatching {
                                 val label = if (f.kind == "YT") "YouTube" else "RSS"
-                                fetchUrl(f.url, label, f.name, null).map { it.copy(ticker = f.name, source = label) }
+                                fetchUrl(f.url, label, f.name, null).map { it.copy(ticker = f.name, source = label, es = true) }
                             }.getOrDefault(emptyList())
                         }
                     }
@@ -72,15 +74,17 @@ object NewsFetcher {
                 }
             }
             if (fetched.isNotEmpty()) {
-                val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+                val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
                 val hidden = Store.dismissed.value
+                val blocked = Store.blocked.value
+                val order = compareByDescending<News> { it.es }.thenByDescending { it.time }
                 val result = fetched
-                    .filter { it.time >= cutoff && newsKey(it) !in hidden }
-                    .sortedByDescending { it.time }
+                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) }
+                    .sortedWith(order)
                     .distinctBy { it.ticker + "|" + norm(it.title) }
                     .groupBy { it.ticker }
                     .flatMap { (_, list) -> list.take(PER_TAG) }
-                    .sortedByDescending { it.time }
+                    .sortedWith(order)
                 Store.setNews(result)
                 Store.touch()
             }
@@ -88,6 +92,24 @@ object NewsFetcher {
             Store.loading.value = false
             mutex.unlock()
             runCatching { AccionesWidget().updateAll(ctx.applicationContext) }
+        }
+    }
+
+    /** Heurística simple: ¿el titular está en español? */
+    fun looksSpanish(title: String): Boolean {
+        val t = " " + title.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ") + " "
+        if (t.any { it in "ñáéíóúü" }) return true
+        val es = listOf(" de ", " el ", " la ", " los ", " las ", " del ", " con ", " por ", " para ", " que ", " una ", " un ", " se ", " su ", " al ").count { t.contains(it) }
+        val en = listOf(" the ", " of ", " to ", " and ", " in ", " for ", " on ", " is ", " with ", " at ", " as ", " its ", " from ").count { t.contains(it) }
+        return es > en
+    }
+
+    /** Medios de pago (o bloqueados por el usuario): por nombre del medio o por dominio. */
+    fun isBlocked(n: News, terms: List<String>): Boolean {
+        val name = n.source.lowercase()
+        val hosts = listOf(n.url, n.site).mapNotNull { runCatching { android.net.Uri.parse(it).host?.lowercase() }.getOrNull() }
+        return terms.any { t ->
+            if (t.contains('.')) hosts.any { it == t || it.endsWith(".$t") } else name.contains(t)
         }
     }
 
@@ -111,11 +133,16 @@ object NewsFetcher {
     }
 
     private fun fetchTicker(ticker: String, s: Src): List<News> {
+        if (s == Src.YAHOO) {
+            val base = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=${enc(ticker)}"
+            val spanish = fetchUrl("$base&region=ES&lang=es-ES", "Yahoo Finance", ticker, s)
+            return if (spanish.isNotEmpty()) spanish else fetchUrl("$base&region=US&lang=en-US", "Yahoo Finance", ticker, s)
+        }
         val url = when (s) {
             Src.GOOGLE_ES -> "https://news.google.com/rss/search?q=${enc("$ticker acciones")}&hl=es&gl=ES&ceid=ES:es"
             Src.GOOGLE_EN -> "https://news.google.com/rss/search?q=${enc("$ticker stock")}&hl=en-US&gl=US&ceid=US:en"
-            Src.YAHOO -> "https://feeds.finance.yahoo.com/rss/2.0/headline?s=${enc(ticker)}&region=US&lang=en-US"
-            Src.BING -> "https://www.bing.com/news/search?q=${enc("$ticker stock")}&format=rss&setlang=en"
+            Src.YAHOO -> return emptyList()
+            Src.BING -> "https://www.bing.com/news/search?q=${enc("$ticker acciones")}&format=rss&setmkt=es-ES&setlang=es"
             Src.INVESTING -> return emptyList()
         }
         val default = when (s) {
@@ -220,6 +247,7 @@ object NewsFetcher {
         var link = ""
         var date = 0L
         var src = ""
+        var site = ""
         var ev = p.eventType
         while (ev != XmlPullParser.END_DOCUMENT) {
             when (ev) {
@@ -227,7 +255,7 @@ object NewsFetcher {
                     val n = p.name
                     if (n == "item" || n == "entry") {
                         inItem = true
-                        title = ""; link = ""; date = 0L; src = ""
+                        title = ""; link = ""; date = 0L; src = ""; site = ""
                     } else if (inItem) {
                         when (n) {
                             "title" -> title = p.nextText().trim()
@@ -243,7 +271,10 @@ object NewsFetcher {
                             }
                             "pubDate", "published" -> date = parseDate(p.nextText())
                             "updated" -> if (date == 0L) date = parseDate(p.nextText())
-                            "source", "News:Source" -> src = p.nextText().trim()
+                            "source", "News:Source" -> {
+                                site = p.getAttributeValue(null, "url") ?: ""
+                                src = p.nextText().trim()
+                            }
                         }
                     }
                 }
@@ -253,7 +284,7 @@ object NewsFetcher {
                         if (title.isNotBlank() && link.isNotBlank()) {
                             val source = src.ifBlank { defaultSource }
                             val clean = if (s == Src.GOOGLE_ES || s == Src.GOOGLE_EN) title.removeSuffix(" - $source") else title
-                            out.add(News(clean, link, source, ticker, if (date == 0L) System.currentTimeMillis() else date))
+                            out.add(News(clean, link, source, ticker, if (date == 0L) System.currentTimeMillis() else date, looksSpanish(clean), site))
                         }
                     }
                 }

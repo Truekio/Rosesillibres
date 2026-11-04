@@ -46,7 +46,8 @@ private val KeyParam = ActionParameters.Key<String>("k")
 class AccionesWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         Store.init(context)
-        val news = Store.news.value.take(30)
+        val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
+        val news = Store.news.value.filter { it.time >= cutoff }.take(30)
         val hasTickers = Store.tickers.value.isNotEmpty()
         provideContent {
             GlanceTheme {
