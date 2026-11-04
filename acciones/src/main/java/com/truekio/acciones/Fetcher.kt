@@ -73,8 +73,9 @@ object NewsFetcher {
             }
             if (fetched.isNotEmpty()) {
                 val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+                val hidden = Store.dismissed.value
                 val result = fetched
-                    .filter { it.time >= cutoff }
+                    .filter { it.time >= cutoff && newsKey(it) !in hidden }
                     .sortedByDescending { it.time }
                     .distinctBy { it.ticker + "|" + norm(it.title) }
                     .groupBy { it.ticker }

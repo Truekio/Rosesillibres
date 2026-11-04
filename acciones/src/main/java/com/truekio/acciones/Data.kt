@@ -15,6 +15,8 @@ data class News(
     val time: Long
 )
 
+fun newsKey(n: News) = n.ticker + "|" + n.url
+
 enum class Src(val label: String) {
     GOOGLE_ES("Google News (ES)"),
     GOOGLE_EN("Google News (EN)"),
@@ -52,6 +54,7 @@ object Store {
     val tickers = MutableStateFlow<List<String>>(emptyList())
     val sources = MutableStateFlow(Src.values().map { it.name }.toSet())
     val feeds = MutableStateFlow<List<Feed>>(emptyList())
+    val dismissed = MutableStateFlow<Set<String>>(emptySet())
     val news = MutableStateFlow<List<News>>(emptyList())
     val loading = MutableStateFlow(false)
     val lastUpdate = MutableStateFlow(0L)
@@ -66,6 +69,10 @@ object Store {
         tickers.value = (prefs.getString("tickers", "") ?: "").split("|").filter { it.isNotBlank() }
         prefs.getStringSet("sources", null)?.let { sources.value = it.toSet() }
         lastUpdate.value = prefs.getLong("last", 0L)
+        runCatching {
+            val da = JSONArray(prefs.getString("dismissed", "[]"))
+            dismissed.value = LinkedHashSet(List(da.length()) { da.getString(it) })
+        }
         runCatching {
             val fa = JSONArray(prefs.getString("feeds", "[]"))
             feeds.value = List(fa.length()) {
@@ -108,6 +115,17 @@ object Store {
         val a = JSONArray()
         feeds.value.forEach { a.put(JSONObject().put("u", it.url).put("n", it.name).put("k", it.kind)) }
         sp?.edit()?.putString("feeds", a.toString())?.apply()
+    }
+
+    /** Descarta una noticia: desaparece y no vuelve en próximas actualizaciones. */
+    @Synchronized
+    fun dismiss(key: String) {
+        val next = LinkedHashSet(dismissed.value)
+        next.add(key)
+        val trimmed = if (next.size > 1000) LinkedHashSet(next.toList().takeLast(1000)) else next
+        dismissed.value = trimmed
+        sp?.edit()?.putString("dismissed", JSONArray(trimmed.toList()).toString())?.apply()
+        setNews(news.value.filter { newsKey(it) != key })
     }
 
     @Synchronized

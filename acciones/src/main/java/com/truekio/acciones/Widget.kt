@@ -11,6 +11,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -34,10 +35,13 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
+import androidx.glance.appwidget.updateAll
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+
+private val KeyParam = ActionParameters.Key<String>("k")
 
 class AccionesWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -144,7 +148,33 @@ private fun NewsRow(n: News) {
                     style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp)
                 )
             }
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            Box(
+                modifier = GlanceModifier
+                    .size(40.dp)
+                    .cornerRadius(20.dp)
+                    .background(GlanceTheme.colors.primaryContainer)
+                    .clickable(actionRunCallback<DismissAction>(actionParametersOf(KeyParam to newsKey(n)))),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "✕",
+                    style = TextStyle(
+                        color = GlanceTheme.colors.onPrimaryContainer,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
         }
+    }
+}
+
+class DismissAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        Store.init(context)
+        parameters[KeyParam]?.let { Store.dismiss(it) }
+        AccionesWidget().updateAll(context)
     }
 }
 

@@ -226,9 +226,9 @@ fun Screen() {
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                 ) {
-                    Row(Modifier.height(IntrinsicSize.Min)) {
+                    Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(6.dp).fillMaxHeight().background(color))
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Text(
                                 n.title,
                                 style = MaterialTheme.typography.titleSmall,
@@ -241,6 +241,9 @@ fun Screen() {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
+                        }
+                        IconButton(onClick = { Store.dismiss(newsKey(n)) }) {
+                            Icon(Icons.Default.Close, contentDescription = "Descartar noticia")
                         }
                     }
                 }
