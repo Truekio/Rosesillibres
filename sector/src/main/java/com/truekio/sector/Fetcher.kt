@@ -67,9 +67,10 @@ object NewsFetcher {
                 val hidden = Store.dismissed.value
                 val blocked = Store.blocked.value
                 val excluded = Store.excluded.value
+                val spain = Store.spainOnly.value
                 val order = compareByDescending<News> { it.time }
                 val result = fetched
-                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && !hasExcluded(it.title, excluded) }
+                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && (!spain || isSpain(it)) && !hasExcluded(it.title, excluded) }
                     .sortedWith(order)
                     .distinctBy { it.ticker + "|" + norm(it.title) }
                     .groupBy { it.ticker }
@@ -101,6 +102,33 @@ object NewsFetcher {
         rxCache.getOrPut(w) {
             Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(w) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
         }.containsMatchIn(title)
+    }
+
+    private val FOREIGN_TLD = listOf(
+        ".mx", ".ar", ".cl", ".co", ".pe", ".uy", ".ve", ".ec", ".bo", ".py", ".cr", ".gt", ".do", ".pa", ".sv", ".hn", ".ni", ".cu", ".pr",
+        ".br", ".pt", ".fr", ".it", ".de", ".uk", ".us", ".ie", ".nl", ".be", ".ch", ".at", ".cn", ".in", ".jp", ".ru", ".pl", ".au", ".ca"
+    )
+    private val SPAIN_TLD = listOf(".es", ".cat", ".eus", ".gal")
+    private val LATAM_WORDS = Regex(
+        "(?<![\\p{L}])(México|Mexico|Argentina|Chile|Colombia|Perú|Uruguay|Venezuela|Ecuador|Bolivia|Paraguay|Costa Rica|Guatemala|Honduras|Panamá|Cuba|Puerto Rico|Brasil|Portugal|Francia|Italia|Alemania|Reino Unido|EE\\.? ?UU\\.?|Estados Unidos|China|India)(?![\\p{L}])",
+        RegexOption.IGNORE_CASE
+    )
+    private val SPAIN_WORDS = Regex(
+        "(?<![\\p{L}])(España|español|española|españoles|Madrid|Cataluña|Barcelona|Valencia|Andalucía|Murcia|Galicia|Aragón|Navarra|La Rioja|Castilla|Extremadura|Asturias|Cantabria|País Vasco|Canarias|Baleares|Almería|Huelva|Lleida|Girona|Zaragoza|Sevilla|Mercadona)(?![\\p{L}])",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** ¿La noticia parece de/sobre España? Por dominio del medio y, si no se sabe, por el titular. */
+    fun isSpain(n: News): Boolean {
+        val hosts = listOf(n.site, n.url).mapNotNull { runCatching { android.net.Uri.parse(it).host?.lowercase() }.getOrNull() }
+            .filter { !it.contains("google.") && !it.contains("bing.") }
+        val trade = Store.tradeDomains.value
+        if (hosts.any { h -> SPAIN_TLD.any { h.endsWith(it) } || trade.any { h == it || h.endsWith(".$it") } }) {
+            return !LATAM_WORDS.containsMatchIn(n.title) || SPAIN_WORDS.containsMatchIn(n.title)
+        }
+        if (hosts.any { h -> FOREIGN_TLD.any { h.endsWith(it) } }) return false
+        if (SPAIN_WORDS.containsMatchIn(n.title)) return true
+        return n.es && !LATAM_WORDS.containsMatchIn(n.title)
     }
 
     /** Medios de pago (o bloqueados por el usuario): por nombre del medio o por dominio. */

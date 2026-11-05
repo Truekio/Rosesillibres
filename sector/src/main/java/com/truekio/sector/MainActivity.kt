@@ -51,6 +51,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -301,6 +302,7 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
     val blocked by Store.blocked.collectAsState()
     val excluded by Store.excluded.collectAsState()
     val domains by Store.tradeDomains.collectAsState()
+    val spainOnly by Store.spainOnly.collectAsState()
     var domInput by remember { mutableStateOf("") }
     var wordInput by remember { mutableStateOf("") }
     var blockInput by remember { mutableStateOf("") }
@@ -352,6 +354,13 @@ fun SourcesDialog(onClose: () -> Unit, onChanged: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Solo noticias de España", modifier = Modifier.weight(1f))
+                    Switch(checked = spainOnly, onCheckedChange = { Store.setSpainOnly(it) })
+                }
                 HorizontalDivider(Modifier.padding(vertical = 14.dp))
                 Text("Medios del sector", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 OutlinedTextField(

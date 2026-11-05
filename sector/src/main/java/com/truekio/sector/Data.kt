@@ -116,6 +116,7 @@ object Store {
     val excluded = MutableStateFlow(DEFAULT_EXCLUDED)
     val news = MutableStateFlow<List<News>>(emptyList())
     val loading = MutableStateFlow(false)
+    val spainOnly = MutableStateFlow(true)
     val lastUpdate = MutableStateFlow(0L)
 
     @Synchronized
@@ -125,6 +126,7 @@ object Store {
         val prefs = app.getSharedPreferences("sector", Context.MODE_PRIVATE)
         sp = prefs
         file = File(app.filesDir, "news.json")
+        spainOnly.value = prefs.getBoolean("spain", true)
         runCatching {
             val ta = JSONArray(prefs.getString("topics", "[]"))
             topics.value = List(ta.length()) {
@@ -280,6 +282,12 @@ object Store {
         if (next.isEmpty()) return
         sources.value = next
         sp?.edit()?.putStringSet("sources", next)?.apply()
+    }
+
+    @Synchronized
+    fun setSpainOnly(v: Boolean) {
+        spainOnly.value = v
+        sp?.edit()?.putBoolean("spain", v)?.apply()
     }
 
     private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
