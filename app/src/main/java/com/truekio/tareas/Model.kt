@@ -98,6 +98,22 @@ fun taskFromJson(o: JSONObject): Task {
     )
 }
 
+val BUCKET_TITLES = listOf("Atrasadas", "Hoy", "Mañana", "Esta semana", "Más adelante")
+
+/** 0 = atrasada, 1 = hoy, 2 = mañana, 3 = próximos 7 días, 4 = más adelante. */
+fun bucketOf(due: Long, now: Long): Int {
+    if (due < now) return 0
+    val z = ZoneId.systemDefault()
+    val today = Instant.ofEpochMilli(now).atZone(z).toLocalDate()
+    val d = Instant.ofEpochMilli(due).atZone(z).toLocalDate()
+    return when {
+        d == today -> 1
+        d == today.plusDays(1) -> 2
+        d <= today.plusDays(7) -> 3
+        else -> 4
+    }
+}
+
 object Recur {
     /** Siguiente vencimiento de una tarea recurrente, siempre posterior a ahora y al vencimiento actual. */
     fun next(t: Task, now: Long): Long {

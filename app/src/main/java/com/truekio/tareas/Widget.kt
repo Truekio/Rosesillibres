@@ -43,21 +43,38 @@ import androidx.glance.unit.ColorProvider
 
 private val IdKey = ActionParameters.Key<String>("id")
 
+private sealed class WRow {
+    data class H(val bucket: Int) : WRow()
+    data class T(val task: Task) : WRow()
+}
+
 class TaskWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         TaskRepository.init(context)
+        val now = System.currentTimeMillis()
         val tasks = TaskRepository.tasks.value.filter { !it.done }.sortedBy { it.due }.take(40)
+        val rows = buildList<WRow> {
+            var last = -1
+            for (t in tasks) {
+                val b = bucketOf(t.due, now)
+                if (b != last) {
+                    add(WRow.H(b))
+                    last = b
+                }
+                add(WRow.T(t))
+            }
+        }
         val cats = TaskRepository.categories.value.associateBy { it.id }
         provideContent {
             GlanceTheme {
-                WidgetBody(tasks, cats)
+                WidgetBody(rows, tasks.isEmpty(), cats)
             }
         }
     }
 }
 
 @Composable
-private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
+private fun WidgetBody(rows: List<WRow>, empty: Boolean, cats: Map<String, Category>) {
     val context = LocalContext.current
     val now = System.currentTimeMillis()
     Column(
@@ -87,9 +104,8 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
                     .background(GlanceTheme.colors.primary)
                     .clickable(
                         actionStartActivity(
-                            Intent(context, MainActivity::class.java)
-                                .putExtra("new", true)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            Intent(context, QuickAddActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -104,7 +120,7 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
                 )
             }
         }
-        if (tasks.isEmpty()) {
+        if (empty) {
             Text(
                 text = "Todo hecho 🎉",
                 modifier = GlanceModifier.padding(top = 8.dp),
@@ -112,8 +128,19 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
             )
         } else {
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                items(tasks, itemId = { it.id.hashCode().toLong() }) { t ->
-                    TaskRow(t, cats[t.categoryId], now)
+                items(
+                    rows,
+                    itemId = { r ->
+                        when (r) {
+                            is WRow.H -> -(r.bucket + 1).toLong()
+                            is WRow.T -> r.task.id.hashCode().toLong()
+                        }
+                    }
+                ) { r ->
+                    when (r) {
+                        is WRow.H -> SectionHeader(r.bucket)
+                        is WRow.T -> TaskRow(r.task, cats[r.task.categoryId], now)
+                    }
                 }
             }
         }
@@ -121,7 +148,21 @@ private fun WidgetBody(tasks: List<Task>, cats: Map<String, Category>) {
 }
 
 @Composable
+private fun SectionHeader(bucket: Int) {
+    Text(
+        text = BUCKET_TITLES[bucket],
+        modifier = GlanceModifier.fillMaxWidth().padding(start = 4.dp, top = 6.dp, bottom = 0.dp),
+        style = TextStyle(
+            color = if (bucket == 0) GlanceTheme.colors.error else GlanceTheme.colors.primary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
+    )
+}
+
+@Composable
 private fun TaskRow(t: Task, cat: Category?, now: Long) {
+    val context = LocalContext.current
     val color = Color(cat?.color ?: 0xFF64748BL)
     val overdue = t.due < now
     Box(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -163,8 +204,25 @@ private fun TaskRow(t: Task, cat: Category?, now: Long) {
         }
         Box(
             modifier = GlanceModifier
-                .size(48.dp)
-                .cornerRadius(24.dp)
+                .size(44.dp)
+                .cornerRadius(22.dp)
+                .background(GlanceTheme.colors.secondaryContainer)
+                .clickable(
+                    actionStartActivity(
+                        Intent(context, SnoozeActivity::class.java)
+                            .putExtra("id", t.id)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "⏰", style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer, fontSize = 18.sp))
+        }
+        Spacer(modifier = GlanceModifier.width(6.dp))
+        Box(
+            modifier = GlanceModifier
+                .size(44.dp)
+                .cornerRadius(22.dp)
                 .background(GlanceTheme.colors.primaryContainer)
                 .clickable(actionRunCallback<DoneAction>(actionParametersOf(IdKey to t.id))),
             contentAlignment = Alignment.Center

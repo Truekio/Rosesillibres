@@ -48,6 +48,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -62,6 +66,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -152,7 +158,19 @@ fun MainScreen(
     }
     val grouped = pending.groupBy { bucket(it) }.toSortedMap()
 
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    fun withUndo(msg: String, before: Task, action: () -> Unit) {
+        action()
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val r = snackbar.showSnackbar(msg, actionLabel = "Deshacer", duration = SnackbarDuration.Short)
+            if (r == SnackbarResult.ActionPerformed) TaskRepository.upsert(before)
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Mis tareas", fontWeight = FontWeight.Bold) },
@@ -246,8 +264,8 @@ fun MainScreen(
                         t = t,
                         cat = cats.firstOrNull { it.id == t.categoryId },
                         now = now,
-                        onToggle = { TaskRepository.complete(t.id); Notifier.dismiss(ctx, t.id) },
-                        onSnooze = { TaskRepository.snooze(t.id, it) },
+                        onToggle = { withUndo("Tarea completada", t) { TaskRepository.complete(t.id); Notifier.dismiss(ctx, t.id) } },
+                        onSnooze = { s -> withUndo("Pospuesta ${s.label.removePrefix("+")}", t) { TaskRepository.snooze(t.id, s) } },
                         onEdit = { editing = t }
                     )
                 }
@@ -294,7 +312,7 @@ fun MainScreen(
             cats = cats,
             defaultCategoryId = null,
             onSave = { TaskRepository.upsert(it); editing = null },
-            onDelete = { TaskRepository.delete(t.id); editing = null },
+            onDelete = { withUndo("Tarea eliminada", t) { TaskRepository.delete(t.id) }; editing = null },
             onClose = { editing = null }
         )
     }
