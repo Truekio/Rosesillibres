@@ -78,7 +78,7 @@ object NewsFetcher {
                 val hidden = Store.dismissed.value
                 val blocked = Store.blocked.value
                 val excluded = Store.excluded.value
-                val order = compareByDescending<News> { it.es }.thenByDescending { it.time }
+                val order = compareByDescending<News> { it.time }
                 val result = fetched
                     .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && !hasExcluded(it.title, excluded) }
                     .sortedWith(order)

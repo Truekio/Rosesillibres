@@ -47,7 +47,7 @@ class AccionesWidget : GlanceAppWidget() {
         Store.init(context)
         val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
         val excluded = Store.excluded.value
-        val news = Store.news.value.filter { it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excluded) }.take(20)
+        val news = Store.news.value.filter { it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excluded) }.sortedByDescending { it.time }.take(20)
         val hasTickers = Store.tickers.value.isNotEmpty()
         provideContent {
             GlanceTheme {

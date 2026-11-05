@@ -143,7 +143,7 @@ fun Screen() {
     val active = filter?.takeIf { it in tags }
     val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
     val excludedWords by Store.excluded.collectAsState()
-    val shown = news.filter { (active == null || it.ticker == active) && it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excludedWords) }
+    val shown = news.filter { (active == null || it.ticker == active) && it.time >= cutoff && !NewsFetcher.hasExcluded(it.title, excludedWords) }.sortedByDescending { it.time }
 
     Scaffold(
         topBar = {
