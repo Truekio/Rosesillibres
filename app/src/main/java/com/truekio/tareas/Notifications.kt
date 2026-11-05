@@ -11,9 +11,12 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
+const val NAG = -1
+const val MAX_NAGS = 30
+
 object Scheduler {
-    private fun pending(ctx: Context, id: String, offset: Int): PendingIntent {
-        val i = Intent(ctx, AlarmReceiver::class.java).putExtra("id", id).putExtra("off", offset)
+    private fun pending(ctx: Context, id: String, offset: Int, n: Int = 0): PendingIntent {
+        val i = Intent(ctx, AlarmReceiver::class.java).putExtra("id", id).putExtra("off", offset).putExtra("n", n)
         return PendingIntent.getBroadcast(
             ctx, "$id|$offset".hashCode(), i,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -33,11 +36,23 @@ object Scheduler {
             if (canExact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         }
+        am.cancel(pending(ctx, t.id, NAG))
+        if (!t.done && t.nag > 0 && t.due > now) scheduleNag(ctx, t.id, t.due, 0)
+    }
+
+    /** Aviso insistente: se repite hasta que la tarea se marque como hecha o se pospone. */
+    fun scheduleNag(ctx: Context, id: String, at: Long, n: Int) {
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pi = pending(ctx, id, NAG, n)
+        val canExact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+        if (canExact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
     }
 
     fun cancel(ctx: Context, id: String) {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         for ((off, _) in REMINDER_OPTIONS) am.cancel(pending(ctx, id, off))
+        am.cancel(pending(ctx, id, NAG))
     }
 
     fun rescheduleAll(ctx: Context) {
@@ -117,7 +132,15 @@ class AlarmReceiver : BroadcastReceiver() {
         val off = intent.getIntExtra("off", 0)
         val t = TaskRepository.find(id) ?: return
         if (t.done) return
-        Notifier.show(context, t, off)
+        if (off == NAG) {
+            Notifier.show(context, t, 0)
+            val n = intent.getIntExtra("n", 0) + 1
+            if (t.nag > 0 && n < MAX_NAGS) {
+                Scheduler.scheduleNag(context, id, System.currentTimeMillis() + t.nag * 60_000L, n)
+            }
+        } else {
+            Notifier.show(context, t, off)
+        }
     }
 }
 

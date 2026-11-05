@@ -56,7 +56,9 @@ data class Task(
     /** Bits 0..6 = lunes..domingo. 0 = el mismo día de la semana. */
     val weekdays: Int = 0,
     val reminders: List<Int> = listOf(0),
-    val done: Boolean = false
+    val done: Boolean = false,
+    /** Minutos entre avisos insistentes tras el vencimiento (0 = desactivado). */
+    val nag: Int = 0
 )
 
 fun Category.toJson(): JSONObject =
@@ -76,6 +78,7 @@ fun Task.toJson(): JSONObject = JSONObject()
     .put("weekdays", weekdays)
     .put("reminders", JSONArray(reminders))
     .put("done", done)
+    .put("nag", nag)
 
 fun taskFromJson(o: JSONObject): Task {
     val ra = o.optJSONArray("reminders")
@@ -90,7 +93,8 @@ fun taskFromJson(o: JSONObject): Task {
         interval = o.optInt("interval", 1),
         weekdays = o.optInt("weekdays", 0),
         reminders = reminders,
-        done = o.optBoolean("done", false)
+        done = o.optBoolean("done", false),
+        nag = o.optInt("nag", 0)
     )
 }
 

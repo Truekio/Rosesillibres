@@ -92,6 +92,7 @@ fun TaskEditor(
     var interval by remember { mutableIntStateOf(initial?.interval ?: 1) }
     var weekdays by remember { mutableIntStateOf(initial?.weekdays ?: 0) }
     var reminders by remember { mutableStateOf((initial?.reminders ?: listOf(0)).toSet()) }
+    var nag by remember { mutableIntStateOf(initial?.nag ?: 0) }
     var confirmDelete by remember { mutableStateOf(false) }
 
     val zdt = Instant.ofEpochMilli(due).atZone(zone)
@@ -130,7 +131,8 @@ fun TaskEditor(
                                     interval = interval.coerceAtLeast(1),
                                     weekdays = if (repeat == Repeat.WEEKLY) weekdays else 0,
                                     reminders = reminders.sorted(),
-                                    done = initial?.done ?: false
+                                    done = initial?.done ?: false,
+                                    nag = nag
                                 )
                             )
                         }
@@ -278,6 +280,21 @@ fun TaskEditor(
                                 onClick = { reminders = if (min in reminders) reminders - min else reminders + min },
                                 label = { Text(label) }
                             )
+                        }
+                    }
+
+                    SectionLabel("Insistir hasta marcar como hecha")
+                    Text(
+                        "Tras la hora de la tarea, el aviso se repite hasta que la completes o la pospongas (máx. 30 veces).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(0 to "No", 5 to "Cada 5 min", 10 to "Cada 10 min", 15 to "Cada 15 min").forEach { (m, label) ->
+                            FilterChip(selected = nag == m, onClick = { nag = m }, label = { Text(label) })
                         }
                     }
 

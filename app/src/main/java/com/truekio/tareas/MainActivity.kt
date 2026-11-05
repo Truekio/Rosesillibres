@@ -26,6 +26,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 
 class MainActivity : ComponentActivity() {
     private var openNew by mutableStateOf(false)
+    private var importText by mutableStateOf<String?>(null)
+
+    private fun toast(msg: String) = android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri != null) {
+                val ok = runCatching {
+                    contentResolver.openOutputStream(uri)!!.use { it.write(TaskRepository.exportJson().toByteArray(Charsets.UTF_8)) }
+                }.isSuccess
+                toast(if (ok) "Copia guardada" else "No se pudo guardar la copia")
+            }
+        }
+
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                val text = runCatching {
+                    contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+                }.getOrNull()
+                if (text != null && TaskRepository.parseBackup(text) != null) importText = text
+                else toast("Ese archivo no es una copia válida")
+            }
+        }
 
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -49,7 +73,20 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     openNew = openNew,
                     onNewConsumed = { openNew = false },
-                    onAskBattery = { askBattery() }
+                    onAskBattery = { askBattery() },
+                    onExport = { exportLauncher.launch("tareas-${java.time.LocalDate.now()}.json") },
+                    onImport = { importLauncher.launch(arrayOf("*/*")) },
+                    pendingImport = importText,
+                    onImportDecision = { ok ->
+                        val text = importText
+                        importText = null
+                        if (ok && text != null) {
+                            TaskRepository.parseBackup(text)?.let {
+                                TaskRepository.importBackup(it.first, it.second)
+                                toast("Copia importada: ${it.second.size} tareas")
+                            }
+                        }
+                    }
                 )
             }
         }

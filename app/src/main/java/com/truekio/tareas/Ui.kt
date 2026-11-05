@@ -100,7 +100,15 @@ fun AppTheme(content: @Composable () -> Unit) {
 private val SECTION_TITLES = listOf("Atrasadas", "Hoy", "Mañana", "Esta semana", "Más adelante")
 
 @Composable
-fun MainScreen(openNew: Boolean, onNewConsumed: () -> Unit, onAskBattery: () -> Unit) {
+fun MainScreen(
+    openNew: Boolean,
+    onNewConsumed: () -> Unit,
+    onAskBattery: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+    pendingImport: String?,
+    onImportDecision: (Boolean) -> Unit
+) {
     val ctx = LocalContext.current
     val tasks by TaskRepository.tasks.collectAsState()
     val cats by TaskRepository.categories.collectAsState()
@@ -157,6 +165,14 @@ fun MainScreen(openNew: Boolean, onNewConsumed: () -> Unit, onAskBattery: () -> 
                             DropdownMenuItem(text = { Text("Categorías y colores") }, onClick = {
                                 menuOpen = false
                                 showCats = true
+                            })
+                            DropdownMenuItem(text = { Text("Exportar copia de seguridad") }, onClick = {
+                                menuOpen = false
+                                onExport()
+                            })
+                            DropdownMenuItem(text = { Text("Importar copia de seguridad") }, onClick = {
+                                menuOpen = false
+                                onImport()
                             })
                             DropdownMenuItem(text = { Text("Evitar ahorro de batería") }, onClick = {
                                 menuOpen = false
@@ -280,6 +296,16 @@ fun MainScreen(openNew: Boolean, onNewConsumed: () -> Unit, onAskBattery: () -> 
             onSave = { TaskRepository.upsert(it); editing = null },
             onDelete = { TaskRepository.delete(t.id); editing = null },
             onClose = { editing = null }
+        )
+    }
+    pendingImport?.let { text ->
+        val n = remember(text) { TaskRepository.parseBackup(text)?.second?.size ?: 0 }
+        AlertDialog(
+            onDismissRequest = { onImportDecision(false) },
+            title = { Text("¿Importar copia?") },
+            text = { Text("Se reemplazarán tus tareas actuales por las $n de la copia.") },
+            confirmButton = { TextButton(onClick = { onImportDecision(true) }) { Text("Reemplazar") } },
+            dismissButton = { TextButton(onClick = { onImportDecision(false) }) { Text("Cancelar") } }
         )
     }
     if (showCats) {

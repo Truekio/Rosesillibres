@@ -75,6 +75,34 @@ object TaskRepository {
         WidgetUpdater.update(c)
     }
 
+    fun exportJson(): String = JSONObject()
+        .put("app", "tareas")
+        .put("version", 1)
+        .put("categories", JSONArray(_categories.value.map { it.toJson() }))
+        .put("tasks", JSONArray(_tasks.value.map { it.toJson() }))
+        .toString(2)
+
+    /** Devuelve (categorías, tareas) si el texto es una copia válida; null si no. */
+    fun parseBackup(text: String): Pair<List<Category>, List<Task>>? = runCatching {
+        val root = JSONObject(text)
+        val ca = root.getJSONArray("categories")
+        val ta = root.getJSONArray("tasks")
+        val cats = List(ca.length()) { categoryFromJson(ca.getJSONObject(it)) }
+        val ts = List(ta.length()) { taskFromJson(ta.getJSONObject(it)) }
+        Pair(cats, ts)
+    }.getOrNull()
+
+    @Synchronized
+    fun importBackup(cats: List<Category>, ts: List<Task>) {
+        val c = ctx!!
+        _tasks.value.forEach { Scheduler.cancel(c, it.id) }
+        _categories.value = if (cats.isEmpty()) defaultCategories() else cats
+        _tasks.value = ts
+        save()
+        ts.forEach { Scheduler.schedule(c, it) }
+        WidgetUpdater.update(c)
+    }
+
     fun category(id: String): Category? = _categories.value.firstOrNull { it.id == id }
 
     fun find(id: String): Task? = _tasks.value.firstOrNull { it.id == id }
