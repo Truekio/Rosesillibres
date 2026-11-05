@@ -248,7 +248,7 @@ object NewsFetcher {
         for (p in listOf("EEE, dd MMM yyyy HH:mm:ss zzz", "EEE, dd MMM yyyy HH:mm:ss Z", "EEE, d MMM yyyy HH:mm:ss zzz")) {
             runCatching { return SimpleDateFormat(p, Locale.US).parse(txt)!!.time }
         }
-        return System.currentTimeMillis()
+        return 0L
     }
 
     /** Lee RSS (item) y Atom (entry, usado por YouTube). */
@@ -295,10 +295,10 @@ object NewsFetcher {
                 XmlPullParser.END_TAG -> {
                     if ((p.name == "item" || p.name == "entry") && inItem) {
                         inItem = false
-                        if (title.isNotBlank() && link.isNotBlank()) {
+                        if (title.isNotBlank() && link.isNotBlank() && date > 0L) {
                             val source = src.ifBlank { defaultSource }
                             val clean = if (s == Src.GOOGLE_ES || s == Src.TRADE) title.removeSuffix(" - $source") else title
-                            out.add(News(clean, link, source, ticker, if (date == 0L) System.currentTimeMillis() else date, looksSpanish(clean), site))
+                            out.add(News(clean, link, source, ticker, date, looksSpanish(clean), site))
                         }
                     }
                 }
