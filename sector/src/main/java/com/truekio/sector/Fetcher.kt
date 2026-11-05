@@ -1,0 +1,282 @@
+package com.truekio.sector
+
+import android.content.Context
+import android.util.Xml
+import androidx.glance.appwidget.updateAll
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import org.xmlpull.v1.XmlPullParser
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.time.OffsetDateTime
+import java.util.Locale
+
+object NewsFetcher {
+    private val mutex = Mutex()
+    private const val PER_TAG = 15
+    private val gate = Semaphore(5)
+
+    suspend fun refresh(ctx: Context) {
+        Store.init(ctx)
+        if (!mutex.tryLock()) return
+        try {
+            Store.loading.value = true
+            val topics = Store.topics.value
+            val feeds = Store.feeds.value
+            val enabled = Store.sources.value
+            val domains = Store.tradeDomains.value
+            if (topics.isEmpty() && feeds.isEmpty()) {
+                Store.setNews(emptyList())
+                return
+            }
+            val fetched = withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val jobs = mutableListOf<Deferred<List<News>>>()
+                    for (t in topics) {
+                        for (s in Src.values()) {
+                            if (s.name in enabled && !(s == Src.TRADE && domains.isEmpty())) {
+                                jobs += async { gate.withPermit { runCatching { fetchTopic(t, s, domains) }.getOrDefault(emptyList()) } }
+                            }
+                        }
+                    }
+                    for (f in feeds) {
+                        jobs += async {
+                            gate.withPermit {
+                                runCatching {
+                                    val label = if (f.kind == "YT") "YouTube" else "RSS"
+                                    fetchUrl(f.url, label, f.name, null).map { it.copy(ticker = f.name, source = label, es = true) }
+                                }.getOrDefault(emptyList())
+                            }
+                        }
+                    }
+                    jobs.awaitAll().flatten()
+                }
+            }
+            if (fetched.isNotEmpty()) {
+                val cutoff = System.currentTimeMillis() - NEWS_MAX_AGE_MS
+                val hidden = Store.dismissed.value
+                val blocked = Store.blocked.value
+                val excluded = Store.excluded.value
+                val order = compareByDescending<News> { it.time }
+                val result = fetched
+                    .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && !hasExcluded(it.title, excluded) }
+                    .sortedWith(order)
+                    .distinctBy { it.ticker + "|" + norm(it.title) }
+                    .groupBy { it.ticker }
+                    .flatMap { (_, list) -> list.take(PER_TAG) }
+                    .sortedWith(order)
+                Store.setNews(result)
+                Store.touch()
+            }
+        } finally {
+            Store.loading.value = false
+            mutex.unlock()
+            runCatching { SectorWidget().updateAll(ctx.applicationContext) }
+        }
+    }
+
+    /** Heurística simple: ¿el titular está en español? */
+    fun looksSpanish(title: String): Boolean {
+        val t = " " + title.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ") + " "
+        if (t.any { it in "ñáéíóúü" }) return true
+        val es = listOf(" de ", " el ", " la ", " los ", " las ", " del ", " con ", " por ", " para ", " que ", " una ", " un ", " se ", " su ", " al ").count { t.contains(it) }
+        val en = listOf(" the ", " of ", " to ", " and ", " in ", " for ", " on ", " is ", " with ", " at ", " as ", " its ", " from ").count { t.contains(it) }
+        return es > en
+    }
+
+    /** ¿El titular contiene alguna palabra/expresión excluida (como palabra completa)? */
+    private val rxCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+    fun hasExcluded(title: String, words: List<String>): Boolean = words.any { w ->
+        rxCache.getOrPut(w) {
+            Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(w) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+        }.containsMatchIn(title)
+    }
+
+    /** Medios de pago (o bloqueados por el usuario): por nombre del medio o por dominio. */
+    fun isBlocked(n: News, terms: List<String>): Boolean {
+        val name = n.source.lowercase()
+        val hosts = listOf(n.url, n.site).mapNotNull { runCatching { android.net.Uri.parse(it).host?.lowercase() }.getOrNull() }
+        return terms.any { t ->
+            if (t.contains('.')) hosts.any { it == t || it.endsWith(".$t") } else name.contains(t)
+        }
+    }
+
+    private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }.take(60)
+
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+
+    private fun open(url: String): HttpURLConnection {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 15_000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
+        conn.setRequestProperty("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html, */*")
+        conn.setRequestProperty("Cookie", "CONSENT=YES+1; SOCS=CAI")
+        return conn
+    }
+
+    private fun fetchTopic(t: Topic, s: Src, domains: List<String>): List<News> {
+        val url = when (s) {
+            Src.GOOGLE_ES -> "https://news.google.com/rss/search?q=${enc("${t.query} when:7d")}&hl=es&gl=ES&ceid=ES:es"
+            Src.TRADE -> {
+                val sites = domains.joinToString(" OR ") { "site:$it" }
+                "https://news.google.com/rss/search?q=${enc("(${t.query}) ($sites) when:7d")}&hl=es&gl=ES&ceid=ES:es"
+            }
+            Src.BING -> "https://www.bing.com/news/search?q=${enc(t.query)}&format=rss&setmkt=es-ES&setlang=es"
+        }
+        val default = if (s == Src.BING) "Bing News" else "Google News"
+        return fetchUrl(url, default, t.name, s)
+    }
+
+    private fun fetchUrl(url: String, defaultSource: String, ticker: String, s: Src?): List<News> {
+        val conn = open(url)
+        try {
+            if (conn.responseCode != 200) return emptyList()
+            return conn.inputStream.use { parseFeed(it, defaultSource, ticker, s) }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun httpGet(url: String): String? {
+        val conn = open(url)
+        return try {
+            if (conn.responseCode != 200) null
+            else conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun feedTitle(url: String): String? {
+        val conn = open(url)
+        try {
+            if (conn.responseCode != 200) return null
+            return conn.inputStream.use { stream ->
+                val p = Xml.newPullParser()
+                p.setInput(stream, null)
+                var ev = p.eventType
+                var result: String? = null
+                while (ev != XmlPullParser.END_DOCUMENT) {
+                    if (ev == XmlPullParser.START_TAG) {
+                        if (p.name == "item" || p.name == "entry") break
+                        if (p.name == "title") {
+                            result = p.nextText().trim().ifBlank { null }
+                            break
+                        }
+                    }
+                    ev = p.next()
+                }
+                result
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** Convierte lo que escribe el usuario (RSS, enlace/@usuario/ID de YouTube) en una fuente. */
+    suspend fun resolveFeed(input: String): Feed? = withContext(Dispatchers.IO) {
+        runCatching {
+            val raw = input.trim()
+            if (raw.isBlank()) return@runCatching null
+            val ytId = Regex("UC[A-Za-z0-9_-]{22}")
+            val isYt = raw.startsWith("@") || raw.contains("youtube.com") || raw.contains("youtu.be") || ytId.matches(raw)
+            if (isYt) {
+                var id: String? = ytId.find(raw)?.value
+                if (id == null) {
+                    val page = if (raw.startsWith("@")) "https://www.youtube.com/$raw"
+                    else if (raw.startsWith("http")) raw else "https://$raw"
+                    val html = httpGet(page)
+                    if (html != null) {
+                        id = Regex("\"channelId\":\"(UC[A-Za-z0-9_-]{22})\"").find(html)?.groupValues?.get(1)
+                            ?: Regex("channel/(UC[A-Za-z0-9_-]{22})").find(html)?.groupValues?.get(1)
+                    }
+                }
+                if (id == null) return@runCatching null
+                val feedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=$id"
+                Feed(feedUrl, feedTitle(feedUrl) ?: "YouTube", "YT")
+            } else {
+                val url = if (raw.startsWith("http")) raw else "https://$raw"
+                val title = feedTitle(url) ?: return@runCatching null
+                Feed(url, title, "RSS")
+            }
+        }.getOrNull()
+    }
+
+    private fun parseDate(raw: String): Long {
+        val txt = raw.trim()
+        runCatching { return OffsetDateTime.parse(txt).toInstant().toEpochMilli() }
+        for (p in listOf("EEE, dd MMM yyyy HH:mm:ss zzz", "EEE, dd MMM yyyy HH:mm:ss Z", "EEE, d MMM yyyy HH:mm:ss zzz")) {
+            runCatching { return SimpleDateFormat(p, Locale.US).parse(txt)!!.time }
+        }
+        return System.currentTimeMillis()
+    }
+
+    /** Lee RSS (item) y Atom (entry, usado por YouTube). */
+    private fun parseFeed(stream: InputStream, defaultSource: String, ticker: String, s: Src?): List<News> {
+        val p = Xml.newPullParser()
+        p.setInput(stream, null)
+        val out = mutableListOf<News>()
+        var inItem = false
+        var title = ""
+        var link = ""
+        var date = 0L
+        var src = ""
+        var site = ""
+        var ev = p.eventType
+        while (ev != XmlPullParser.END_DOCUMENT) {
+            when (ev) {
+                XmlPullParser.START_TAG -> {
+                    val n = p.name
+                    if (n == "item" || n == "entry") {
+                        inItem = true
+                        title = ""; link = ""; date = 0L; src = ""; site = ""
+                    } else if (inItem) {
+                        when (n) {
+                            "title" -> title = p.nextText().trim()
+                            "link" -> {
+                                val href = p.getAttributeValue(null, "href")
+                                val rel = p.getAttributeValue(null, "rel")
+                                val text = p.nextText().trim()
+                                if (href != null) {
+                                    if (rel == null || rel == "alternate") link = href
+                                } else {
+                                    link = text
+                                }
+                            }
+                            "pubDate", "published" -> date = parseDate(p.nextText())
+                            "updated" -> if (date == 0L) date = parseDate(p.nextText())
+                            "source", "News:Source" -> {
+                                site = p.getAttributeValue(null, "url") ?: ""
+                                src = p.nextText().trim()
+                            }
+                        }
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    if ((p.name == "item" || p.name == "entry") && inItem) {
+                        inItem = false
+                        if (title.isNotBlank() && link.isNotBlank()) {
+                            val source = src.ifBlank { defaultSource }
+                            val clean = if (s == Src.GOOGLE_ES || s == Src.TRADE) title.removeSuffix(" - $source") else title
+                            out.add(News(clean, link, source, ticker, if (date == 0L) System.currentTimeMillis() else date, looksSpanish(clean), site))
+                        }
+                    }
+                }
+            }
+            ev = p.next()
+        }
+        return out
+    }
+}

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = "Tareas"
 include(":app")
 include(":acciones")
+include(":sector")
