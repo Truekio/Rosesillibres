@@ -72,7 +72,8 @@ object NewsFetcher {
                 val result = fetched
                     .filter { it.time >= cutoff && newsKey(it) !in hidden && !isBlocked(it, blocked) && (!spain || isSpain(it)) && !hasExcluded(it.title, excluded) }
                     .sortedWith(order)
-                    .distinctBy { it.ticker + "|" + norm(it.title) }
+                    .distinctBy { it.url }
+                    .distinctBy { norm(it.title) }
                     .groupBy { it.ticker }
                     .flatMap { (_, list) -> list.take(PER_TAG) }
                     .sortedWith(order)
