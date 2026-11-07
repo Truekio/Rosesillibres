@@ -165,7 +165,8 @@ object Store {
     fun save(d: Deal) {
         if (saved.value.any { same(it, d) }) return
         saved.value = listOf(d) + saved.value
-        prefs.edit().putString("saved", writeDeals(saved.value)).apply()
+        deals.value = deals.value.filter { !same(it, d) }
+        prefs.edit().putString("saved", writeDeals(saved.value)).putString("deals", writeDeals(deals.value)).apply()
     }
 
     fun unsave(d: Deal) {
