@@ -52,11 +52,6 @@ object Checker {
 
     private fun isJunk(title: String) = title.lowercase().let { t -> junk.any { t.contains(it) } }
 
-    private fun median(l: List<Double>): Double {
-        val s = l.sorted()
-        return if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2
-    }
-
     suspend fun run(ctx: Context): Int {
         Store.init(ctx)
         mutex.lock() // si ya hay una en marcha, esta espera su turno
@@ -90,10 +85,7 @@ object Checker {
 
                         val firstRun = !Store.hasSeen(key)
                         val seen = Store.seenIds(key)
-                        val prices = Store.prices(key)
                         val fresh = items.filter { it.id !in seen }
-                        // Con la historia de precios ANTES de añadir los nuevos, para no sesgar la mediana.
-                        val med = if (prices.size >= 8) median(prices) else null
 
                         val matched = items.size
                         report += "${sourceLabel(src)} \"${s.query}\": ${raw.size} anuncios${if (isDealSite(src)) " (feed de ${Pepper.lastTotal})" else ""}, ${matched} con tus filtros" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
@@ -103,8 +95,6 @@ object Checker {
                                 isDealSite(src) -> "Chollo de la comunidad"
                                 it.price < 1.0 -> null
                                 s.maxPrice != null && it.price <= s.maxPrice -> "Por debajo de tu máximo (${fmt(s.maxPrice)})"
-                                med != null && it.price <= med * (1 - s.minDiscount / 100.0) ->
-                                    "${((1 - it.price / med) * 100).toInt()}% por debajo de la mediana (${fmt(med)})"
                                 else -> null
                             }
                             if (reason != null) {
@@ -124,8 +114,6 @@ object Checker {
                             }
                             for (it in items) if (it.price >= 1.0) pm[it.id] = it.price
                             Store.savePriceMap(key, pm)
-                            fresh.filter { it.price >= 1.0 && !isJunk(it.title) }.forEach { prices += it.price }
-                            Store.savePrices(key, prices)
                         }
                         Store.saveSeen(key, seen + fresh.map { it.id })
                         delay(Random.nextLong(800, 2500)) // pausa para no parecer un bot
@@ -135,7 +123,7 @@ object Checker {
             found = newDeals.size
             Store.addDeals(silent.filter { !Store.isSaved(it.item) } + newDeals)
             Store.setStats(statRaw.keys.associateWith { "${statRaw[it]} encontrados · ${statOk[it]} pasan tus filtros" })
-            newDeals.forEach { notify(ctx, it) }
+            notifyAll(ctx, newDeals)
             val status = ("$found chollos nuevos\n" + report.joinToString("\n") +
                 (if (errors.isEmpty()) "" else "\nERRORES: " + errors.distinct().joinToString(" | "))).trim()
             Store.setStatus(System.currentTimeMillis(), status)
@@ -147,6 +135,31 @@ object Checker {
     }
 
     fun fmt(v: Double) = if (v % 1.0 == 0.0) "${v.toInt()} €" else String.format("%.2f €", v)
+
+    /** Un solo aviso por revisión: el chollo si es uno, o un resumen si son varios. */
+    private fun notifyAll(ctx: Context, deals: List<Deal>) {
+        if (deals.isEmpty()) return
+        if (deals.size == 1) { notify(ctx, deals[0]); return }
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("chollos", "Chollos", NotificationManager.IMPORTANCE_HIGH))
+        val open = PendingIntent.getActivity(
+            ctx, 1, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        fun line(d: Deal) = (if (d.item.price > 0) fmt(d.item.price) + " · " else "") + d.item.title.take(45)
+        val inbox = android.app.Notification.InboxStyle()
+        deals.take(6).forEach { inbox.addLine(line(it)) }
+        if (deals.size > 6) inbox.setSummaryText("y ${deals.size - 6} más")
+        val n = android.app.Notification.Builder(ctx, "chollos")
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("${deals.size} chollos nuevos")
+            .setContentText(line(deals[0]))
+            .setStyle(inbox)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { nm.notify("resumen".hashCode(), n) }
+    }
 
     private fun notify(ctx: Context, d: Deal) {
         val nm = ctx.getSystemService(NotificationManager::class.java)

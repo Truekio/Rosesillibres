@@ -327,7 +327,7 @@ private fun SearchesScreen() {
                                 Column(Modifier.weight(1f)) {
                                     Text(s.query, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     val max = s.maxPrice?.let { "Máx. ${Checker.fmt(it)}" } ?: "Sin precio máximo"
-                                    Text("$max · -${s.minDiscount}% vs mediana", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(max, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     stats[s.id]?.let { Text("Última revisión: $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.tertiary) }
                                     if (s.vintedUrl.isNotBlank()) Text("Con filtros de Vinted", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -372,7 +372,6 @@ private fun SearchesScreen() {
 private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
     var query by remember { mutableStateOf(initial?.query ?: "") }
     var max by remember { mutableStateOf(initial?.maxPrice?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
-    var disc by remember { mutableStateOf((initial?.minDiscount ?: 30).toString()) }
     var inc by remember { mutableStateOf(initial?.include?.joinToString(", ") ?: "") }
     var exc by remember { mutableStateOf(initial?.exclude?.joinToString(", ") ?: "") }
     var sources by remember { mutableStateOf(initial?.sources ?: DEFAULT_SOURCES) }
@@ -388,8 +387,6 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(inc, { inc = it }, label = { Text("Debe incluir (ej. 42, hombre/hombres)") }, singleLine = true)
                 OutlinedTextField(exc, { exc = it }, label = { Text("Excluir (ej. mujer, niño)") }, singleLine = true)
-                OutlinedTextField(disc, { disc = it }, label = { Text("Avisar si está X% bajo lo normal") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(vlink, { vlink = it }, label = { Text("Enlace de Vinted con filtros (opcional)") }, maxLines = 3,
                     supportingText = { Text("Categoría, talla, marca, estado, color…: elígelos en vinted.es y pega aquí la dirección.") })
                 TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.vinted.es/catalog")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
@@ -406,7 +403,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
                 onAdd(Search(initial?.id ?: UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
-                    (disc.toIntOrNull() ?: 30).coerceIn(5, 90), sources, words(inc), words(exc), vlink.trim()))
+                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim()))
             }) { Text(if (initial == null) "Añadir" else "Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
