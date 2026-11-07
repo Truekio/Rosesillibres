@@ -199,7 +199,7 @@ object Vinted {
 }
 
 object Pepper {
-    private val priceRx = Regex("""(\d[\d .]*(?:[.,]\d{1,2})?)\s*€""")
+    private val priceRx = Regex("""class=["']?[^>]*?s-(?:card|item)__price[^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
     private val tagRx = Regex("<[^>]+>")
 
     /** Ofertas totales que traía el último feed leído (para el estado). */
@@ -294,12 +294,12 @@ object Ebay {
     private val jar = linkedMapOf<String, String>()
     private var warmAt = 0L
 
-    private val cardSplit = Regex("""(?=<li[^>]*class="[^"]*\bs-(?:card|item)\b)""")
-    private val hrefRx = Regex("""href="(https://www\.ebay\.[a-z.]+/itm/(\d+)[^"]*)"""")
-    private val titleRx = Regex("""class="[^"]*s-(?:card|item)__title[^"]*"[^>]*>(.*?)</(?:div|h3)>""", RegexOption.DOT_MATCHES_ALL)
+    private val cardSplit = Regex("""(?=<li[^>]*\bs-card\b|<li[^>]*\bs-item\b)""")
+    private val hrefRx = Regex("""href=["']?(https://(?:www\.)?ebay\.[a-z.]+/itm/(\d+)[^"'\s>]*)""")
+    private val titleRx = Regex("""class=["']?[^>]*?s-(?:card|item)__title[^>]*>(.*?)</(?:div|h3)>""", RegexOption.DOT_MATCHES_ALL)
     private val priceRx = Regex("""class="[^"]*s-(?:card|item)__price[^"]*"[^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-    private val subRx = Regex("""class="[^"]*s-(?:card|item)__subtitle[^"]*"[^>]*>(.*?)</(?:div|span)>""", RegexOption.DOT_MATCHES_ALL)
-    private val imgRx = Regex("""<img[^>]+(?:data-src|src)="(https://i\.ebayimg\.com/[^"]+)"""")
+    private val subRx = Regex("""class=["']?[^>]*?s-(?:card|item)__subtitle[^>]*>(.*?)</(?:div|span)>""", RegexOption.DOT_MATCHES_ALL)
+    private val imgRx = Regex("""<img[^>]+?(?:data-src|src)=["']?(https://i\.ebayimg\.com/[^"'\s>]+)""")
     private val tagRx = Regex("<[^>]+>")
     private val numRx = Regex("""(\d[\d.]*(?:,\d{1,2})?)""")
 
@@ -312,8 +312,8 @@ object Ebay {
     }
 
     private var lastCall = 0L
-    private val anchorRx = Regex("""<a[^>]+href="(https://www\.ebay\.[a-z.]+/itm/(\d+)[^"]*)"[^>]*>""")
-    private val altRx = Regex("""alt="([^"]{6,200})"""")
+    private val anchorRx = Regex("""<a[^>]+?href=["']?(https://(?:www\.)?ebay\.[a-z.]+/itm/(\d+)[^"'\s>]*)[^>]*>""")
+    private val altRx = Regex("""alt=["']([^"']{6,200})["']""")
     private val eurRx = Regex("""(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:EUR|€)""")
 
     private fun diag(body: String): String {
@@ -327,12 +327,12 @@ object Ebay {
         val out = linkedMapOf<String, Item>()
         for (m in anchorRx.findAll(body)) {
             val id = m.groupValues[2]
-            if (id in out) continue
+            if (id in out || id == "123456") continue
             val win = body.substring(maxOf(0, m.range.first - 300), minOf(body.length, m.range.last + 2500))
             val title = altRx.find(win)?.groupValues?.get(1)?.let { clean(it) }
                 ?: clean(win.substring(win.indexOf('>', m.range.first - maxOf(0, m.range.first - 300)).coerceAtLeast(0)).take(300)).take(120)
             val pr = eurRx.find(win)?.groupValues?.get(1)?.let { price(it) } ?: 0.0
-            if (pr > 0 && title.length > 5) out[id] = Item(id, SRC_EBAY, title, pr, m.groupValues[1].substringBefore('?'), imgRx.find(win)?.groupValues?.get(1), "")
+            if (pr > 0 && title.length > 5) out[id] = Item(id, SRC_EBAY, title, pr, "https://www.ebay.es/itm/$id", imgRx.find(win)?.groupValues?.get(1), "")
         }
         return out.values.toList()
     }
@@ -365,11 +365,12 @@ object Ebay {
         for (chunk in cardSplit.split(r.body)) {
             val m = hrefRx.find(chunk) ?: continue
             val id = m.groupValues[2]
+            if (id == "123456") continue // tarjeta de muestra de eBay
             val title = titleRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: continue
             if (title.isBlank() || title.startsWith("Shop on eBay", true) || title.startsWith("Resultados", true)) continue
             val pr = priceRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: ""
             val sub = subRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: ""
-            items += Item(id, SRC_EBAY, title, price(pr), m.groupValues[1].substringBefore('?'), imgRx.find(chunk)?.groupValues?.get(1), sub)
+            items += Item(id, SRC_EBAY, title, price(pr), "https://www.ebay.es/itm/$id", imgRx.find(chunk)?.groupValues?.get(1), sub)
         }
         if (items.isEmpty()) items += fallback(r.body)
         if (items.isEmpty()) error("eBay: 0 anuncios leídos (${r.body.length} bytes). ${diag(r.body)}".take(700))
