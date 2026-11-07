@@ -312,6 +312,7 @@ private fun SearchesScreen() {
     val scope = rememberCoroutineScope()
     val searches by Store.searches.collectAsState()
     val stats by Store.stats.collectAsState()
+    var catFilter by remember { mutableStateOf("*") }
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Search?>(null) }
     Box(Modifier.fillMaxSize()) {
@@ -321,18 +322,26 @@ private fun SearchesScreen() {
                 Empty("Nada que vigilar", "Pulsa «Nueva» y escribe un producto corto, por ejemplo «zapatillas on». Los filtros (talla, precio) se ajustan después.")
             } else {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(searches, key = { it.id }) { s ->
+                    val cats = searches.map { it.category }.distinct()
+                    if (cats.size > 1) item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Chip(selected = catFilter == "*", onClick = { catFilter = "*" }, label = { Text("Todas") })
+                            cats.forEach { c -> Chip(selected = catFilter == c, onClick = { catFilter = c }, label = { Text(categoryLabel(c)) }) }
+                        }
+                    }
+                    items(searches.filter { catFilter == "*" || catFilter !in cats || it.category == catFilter || cats.size < 2 }, key = { it.id }) { s ->
                         Card(Modifier.fillMaxWidth().clickable { editing = s }) {
                             Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(s.query, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    if (s.category.isNotBlank()) Text(categoryLabel(s.category), fontSize = 12.sp, color = MaterialTheme.colorScheme.tertiary)
                                     val max = s.maxPrice?.let { "Máx. ${Checker.fmt(it)}" } ?: "Sin precio máximo"
                                     Text(max, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     stats[s.id]?.let { Text("Última revisión: $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.tertiary) }
                                     if (s.vintedUrl.isNotBlank()) Text("Con filtros de Vinted", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.exclude.isNotEmpty()) Text("Excluye: " + s.exclude.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(s.sources.joinToString(" · ") { sourceLabel(it) } + "  ·  toca para editar", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                    Text(s.sources.filter { sourceFits(it, s.category) }.joinToString(" · ") { sourceLabel(it) } + "  ·  toca para editar", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = {
                                     Store.forget(s.id)
@@ -376,6 +385,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
     var exc by remember { mutableStateOf(initial?.exclude?.joinToString(", ") ?: "") }
     var sources by remember { mutableStateOf(initial?.sources ?: DEFAULT_SOURCES) }
     var vlink by remember { mutableStateOf(initial?.vintedUrl ?: "") }
+    var cat by remember { mutableStateOf(initial?.category ?: "") }
     val ctx = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -385,8 +395,16 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                 OutlinedTextField(query, { query = it }, label = { Text("Producto, corto (ej. zapatillas on)") }, singleLine = true)
                 OutlinedTextField(max, { max = it }, label = { Text("Precio máximo en € (opcional)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                Text("Tipo de producto", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOf("") + ALL_CATEGORIES).forEach { c ->
+                        Chip(selected = cat == c, onClick = { cat = c; sources = sources.filter { sourceFits(it, c) }.toSet() },
+                            label = { Text(categoryLabel(c)) })
+                    }
+                }
                 OutlinedTextField(inc, { inc = it }, label = { Text("Debe incluir (ej. 42, hombre/hombres)") }, singleLine = true)
                 OutlinedTextField(exc, { exc = it }, label = { Text("Excluir (ej. mujer, niño)") }, singleLine = true)
+                if (sourceFits(SRC_VINTED, cat)) {
                 OutlinedTextField(vlink, { vlink = it }, label = { Text("Enlace de Vinted con filtros (opcional)") }, maxLines = 3,
                     supportingText = { Text("Categoría, talla, marca, estado, color…: elígelos en vinted.es y pega aquí la dirección.") })
                 // Se abre en el navegador (no en la app de Vinted) para poder ver y copiar la dirección con los filtros.
@@ -403,8 +421,9 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                     if (t.contains("vinted")) vlink = t
                     else android.widget.Toast.makeText(ctx, "Copia primero el enlace de Vinted", android.widget.Toast.LENGTH_SHORT).show()
                 }) { Text("Pegar enlace copiado") }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ALL_SOURCES.forEach { src ->
+                    ALL_SOURCES.filter { sourceFits(it, cat) }.forEach { src ->
                         Chip(selected = src in sources, onClick = { sources = if (src in sources) sources - src else sources + src },
                             label = { Text(sourceLabel(src)) })
                     }
@@ -414,7 +433,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
                 onAdd(Search(initial?.id ?: UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
-                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim()))
+                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim(), cat))
             }) { Text(if (initial == null) "Añadir" else "Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }

@@ -66,7 +66,7 @@ object Checker {
             val statOk = mutableMapOf<String, Int>()
             withContext(Dispatchers.IO) {
                 for (s in Store.searches.value) {
-                    for (src in s.sources) {
+                    for (src in s.sources.filter { sourceFits(it, s.category) }) {
                         val key = "${s.id}_$src"
                         val raw = runCatching {
                             when (src) {

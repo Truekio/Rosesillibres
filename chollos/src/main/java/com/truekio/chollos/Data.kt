@@ -21,6 +21,28 @@ val DEFAULT_SOURCES = setOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
 /** Webs de chollos de la comunidad (formato RSS de Pepper): no hay mediana de precios, cada oferta ya es un chollo. */
 fun isDealSite(s: String) = s == SRC_CHOLLOMETRO || s == SRC_DEALABS || s == SRC_MYDEALZ
 
+const val CAT_ROPA = "ROPA"
+const val CAT_DEPORTE = "DEPORTE"
+const val CAT_ELECTRO = "ELECTRO"
+const val CAT_HOGAR = "HOGAR"
+val ALL_CATEGORIES = listOf(CAT_ROPA, CAT_DEPORTE, CAT_ELECTRO, CAT_HOGAR)
+
+fun categoryLabel(c: String) = when (c) {
+    CAT_ROPA -> "Ropa y calzado"
+    CAT_DEPORTE -> "Deporte"
+    CAT_ELECTRO -> "Electrónica"
+    CAT_HOGAR -> "Hogar"
+    else -> "Todo"
+}
+
+/** Tiene sentido buscar esta categoría en esta web? Las generalistas valen para todo. */
+fun sourceFits(src: String, cat: String) = when {
+    cat.isBlank() -> true
+    src == SRC_VINTED -> cat == CAT_ROPA || cat == CAT_DEPORTE
+    src == SRC_JOTT -> cat == CAT_ROPA
+    else -> true
+}
+
 fun sourceLabel(s: String) = when (s) {
     SRC_WALLAPOP -> "Wallapop"
     SRC_VINTED -> "Vinted"
@@ -41,7 +63,8 @@ data class Search(
     val sources: Set<String>,
     val include: List<String> = emptyList(),
     val exclude: List<String> = emptyList(),
-    val vintedUrl: String = ""
+    val vintedUrl: String = "",
+    val category: String = "" // "" = todo
 )
 
 /** Un anuncio encontrado. price = 0 si no se conoce. */
@@ -278,7 +301,7 @@ object Store {
             put("max", s.maxPrice ?: JSONObject.NULL)
             put("disc", s.minDiscount)
             put("src", JSONArray(s.sources.toList()))
-            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude)); put("vurl", s.vintedUrl)
+            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude)); put("vurl", s.vintedUrl); put("cat", s.category)
         })
         return a.toString()
     }
@@ -294,7 +317,7 @@ object Store {
                 minDiscount = o.optInt("disc", 30),
                 sources = if (src == null) DEFAULT_SOURCES else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
                 include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc")),
-                vintedUrl = o.optString("vurl")
+                vintedUrl = o.optString("vurl"), category = o.optString("cat")
             )
         }
     }.getOrDefault(emptyList())
