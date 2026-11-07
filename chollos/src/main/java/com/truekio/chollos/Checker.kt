@@ -43,8 +43,12 @@ object Checker {
 
     private fun matches(s: Search, i: Item): Boolean {
         val t = (i.title + " " + i.text).lowercase()
-        return s.include.all { hasWord(t, it) } && s.exclude.none { hasWord(t, it) }
+        return s.include.all { anyWord(t, it) } && s.exclude.none { anyWord(t, it) }
     }
+
+    /** "hombre/hombres/caballero" vale si aparece cualquiera de las alternativas. */
+    private fun anyWord(text: String, spec: String) =
+        spec.split('/').map { it.trim() }.filter { it.isNotEmpty() }.any { hasWord(text, it) }
 
     private fun isJunk(title: String) = title.lowercase().let { t -> junk.any { t.contains(it) } }
 
@@ -63,6 +67,8 @@ object Checker {
             val newDeals = mutableListOf<Deal>()
             val silent = mutableListOf<Deal>()
             val report = mutableListOf<String>()
+            val statRaw = mutableMapOf<String, Int>()
+            val statOk = mutableMapOf<String, Int>()
             withContext(Dispatchers.IO) {
                 for (s in Store.searches.value) {
                     for (src in s.sources) {
@@ -77,7 +83,10 @@ object Checker {
                                 else -> Pepper.search("https://www.mydealz.de/rss", SRC_MYDEALZ, s.query, s.maxPrice)
                             }
                         }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
-                        val items = raw.filter { !Store.isBlocked(it) && matches(s, it) }
+                        val passed = raw.count { matches(s, it) }
+                        statRaw[s.id] = (statRaw[s.id] ?: 0) + raw.size
+                        statOk[s.id] = (statOk[s.id] ?: 0) + passed
+                        val items = raw.filter { !Store.isBlocked(it) && !Store.isDismissed(it) && matches(s, it) }
 
                         val firstRun = !Store.hasSeen(key)
                         val seen = Store.seenIds(key)
@@ -124,7 +133,8 @@ object Checker {
                 }
             }
             found = newDeals.size
-            Store.addDeals(silent + newDeals)
+            Store.addDeals(silent.filter { !Store.isSaved(it.item) } + newDeals)
+            Store.setStats(statRaw.keys.associateWith { "${statRaw[it]} encontrados · ${statOk[it]} pasan tus filtros" })
             newDeals.forEach { notify(ctx, it) }
             val status = ("$found chollos nuevos\n" + report.joinToString("\n") +
                 (if (errors.isEmpty()) "" else "\nERRORES: " + errors.distinct().joinToString(" | "))).trim()

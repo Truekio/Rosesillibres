@@ -88,6 +88,8 @@ object Store {
     val radiusKm = MutableStateFlow(0) // 0 = sin límite
     val orShip = MutableStateFlow(true) // con radio: aceptar también anuncios con envío
     val blocked = MutableStateFlow<Set<String>>(emptySet()) // "FUENTE:vendedor"
+    val dismissed = MutableStateFlow<Set<String>>(emptySet()) // "FUENTE:id" de anuncios descartados: no vuelven nunca
+    val stats = MutableStateFlow<Map<String, String>>(emptyMap()) // id de búsqueda -> "N encontrados · M pasan tus filtros"
     val loading = MutableStateFlow(false)
     val lastRun = MutableStateFlow(0L)
     val lastStatus = MutableStateFlow("")
@@ -104,6 +106,11 @@ object Store {
         radiusKm.value = prefs.getInt("radius", 0)
         orShip.value = prefs.getBoolean("orship", true)
         blocked.value = readStrings(prefs.getString("blocked", null)).toSet()
+        dismissed.value = readStrings(prefs.getString("dismissed", null)).toSet()
+        stats.value = runCatching {
+            val o = JSONObject(prefs.getString("stats", "{}") ?: "{}")
+            o.keys().asSequence().associateWith { o.getString(it) }
+        }.getOrDefault(emptyMap())
         lastRun.value = prefs.getLong("lastRun", 0L)
         lastStatus.value = prefs.getString("lastStatus", "") ?: ""
         ready = true
@@ -188,7 +195,23 @@ object Store {
     /** Quita un chollo de la lista (no volverá a salir: su id ya está memorizado). */
     fun dismiss(d: Deal) {
         deals.value = deals.value.filter { !same(it, d) }
-        prefs.edit().putString("deals", writeDeals(deals.value)).apply()
+        dismissed.value = (dismissed.value + "${d.item.source}:${d.item.id}").toList().takeLast(3000).toSet()
+        prefs.edit().putString("deals", writeDeals(deals.value))
+            .putString("dismissed", JSONArray(dismissed.value.toList()).toString()).apply()
+    }
+
+    fun isDismissed(i: Item) = "${i.source}:${i.id}" in dismissed.value
+
+    fun isSaved(i: Item) = saved.value.any { it.item.source == i.source && it.item.id == i.id }
+
+    fun clearDismissed() {
+        dismissed.value = emptySet()
+        prefs.edit().remove("dismissed").apply()
+    }
+
+    fun setStats(m: Map<String, String>) {
+        stats.value = stats.value + m
+        prefs.edit().putString("stats", JSONObject(stats.value).toString()).apply()
     }
 
     fun clearDeals() {

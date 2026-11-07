@@ -311,6 +311,7 @@ private fun SearchesScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val searches by Store.searches.collectAsState()
+    val stats by Store.stats.collectAsState()
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Search?>(null) }
     Box(Modifier.fillMaxSize()) {
@@ -327,6 +328,7 @@ private fun SearchesScreen() {
                                     Text(s.query, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     val max = s.maxPrice?.let { "Máx. ${Checker.fmt(it)}" } ?: "Sin precio máximo"
                                     Text("$max · -${s.minDiscount}% vs mediana", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    stats[s.id]?.let { Text("Última revisión: $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.tertiary) }
                                     if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.exclude.isNotEmpty()) Text("Excluye: " + s.exclude.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(s.sources.joinToString(" · ") { sourceLabel(it) } + "  ·  toca para editar", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
@@ -381,7 +383,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                 OutlinedTextField(query, { query = it }, label = { Text("Producto, corto (ej. zapatillas on)") }, singleLine = true)
                 OutlinedTextField(max, { max = it }, label = { Text("Precio máximo en € (opcional)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(inc, { inc = it }, label = { Text("Debe incluir (ej. 42, hombre)") }, singleLine = true)
+                OutlinedTextField(inc, { inc = it }, label = { Text("Debe incluir (ej. 42, hombre/hombres)") }, singleLine = true)
                 OutlinedTextField(exc, { exc = it }, label = { Text("Excluir (ej. mujer, niño)") }, singleLine = true)
                 OutlinedTextField(disc, { disc = it }, label = { Text("Avisar si está X% bajo lo normal") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -425,6 +427,7 @@ private fun SettingsScreen() {
     val radius by Store.radiusKm.collectAsState()
     val orShip by Store.orShip.collectAsState()
     val blocked by Store.blocked.collectAsState()
+    val dismissed by Store.dismissed.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Header("Ajustes")
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp, 4.dp, 12.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -464,6 +467,7 @@ private fun SettingsScreen() {
             Section("Datos") {
                 OutlinedButton(onClick = { Store.clearDeals() }) { Text("Vaciar lista de chollos") }
                 if (blocked.isNotEmpty()) OutlinedButton(onClick = { Store.clearBlocked() }) { Text("Desbloquear ${blocked.size} vendedores") }
+                if (dismissed.isNotEmpty()) OutlinedButton(onClick = { Store.clearDismissed() }) { Text("Olvidar ${dismissed.size} descartados") }
             }
         }
     }
