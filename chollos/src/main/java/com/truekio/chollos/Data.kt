@@ -17,7 +17,7 @@ const val SRC_JOTT = "JOTT"
 const val SRC_ZALANDO = "ZALANDO"
 const val SRC_PCCOMP = "PCCOMP"
 
-val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_EBAY, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ, SRC_JOTT, SRC_PCCOMP)
+val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_EBAY, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ, SRC_JOTT)
 val DEFAULT_SOURCES = setOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
 
 /** Webs de chollos de la comunidad (formato RSS de Pepper): no hay mediana de precios, cada oferta ya es un chollo. */
