@@ -59,14 +59,14 @@ object Checker {
                 for (s in Store.searches.value) {
                     for (src in s.sources) {
                         val key = "${s.id}_$src"
-                        val items = runCatching {
+                        val raw = runCatching {
                             when (src) {
                                 SRC_WALLAPOP -> Wallapop.search(s.query, s.maxPrice)
                                 SRC_VINTED -> Vinted.search(s.query, s.maxPrice)
                                 else -> Chollometro.search(s.query, s.maxPrice)
                             }
-                        }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null }
-                            ?.filter { matches(s, it) } ?: continue
+                        }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
+                        val items = raw.filter { matches(s, it) }
 
                         val firstRun = !Store.hasSeen(key)
                         val seen = Store.seenIds(key)
@@ -76,7 +76,7 @@ object Checker {
                         val med = if (prices.size >= 8) median(prices) else null
 
                         val matched = items.size
-                        report += "${sourceLabel(src)} \"${s.query}\": ${matched} anuncios" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
+                        report += "${sourceLabel(src)} \"${s.query}\": ${raw.size} anuncios, ${matched} con tus filtros" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
                         for (it in fresh) {
                             if (isJunk(it.title)) continue
                             val reason = when {

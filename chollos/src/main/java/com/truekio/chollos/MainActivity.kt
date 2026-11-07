@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -237,7 +239,19 @@ private fun SettingsScreen() {
     val status by Store.lastStatus.collectAsState()
     val df = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
     val options = listOf(15, 30, 60, 180, 360)
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val place by Store.place.collectAsState()
+    val radius by Store.radiusKm.collectAsState()
+    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Wallapop: ciudad de referencia", fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PLACES.forEach { p -> FilterChip(selected = place.name == p.name, onClick = { Store.setPlace(p) }, label = { Text(p.name) }) }
+        }
+        Text("Distancia máxima", fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(0, 10, 25, 50, 100, 200).forEach { km ->
+                FilterChip(selected = radius == km, onClick = { Store.setRadius(km) }, label = { Text(if (km == 0) "Toda España" else "$km km") })
+            }
+        }
         Text("Revisar cada", fontWeight = FontWeight.Bold)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { m ->

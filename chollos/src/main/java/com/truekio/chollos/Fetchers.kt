@@ -48,8 +48,11 @@ object Wallapop {
     private const val IOS_UA = "Wallapop/1.0 (iPhone; iOS 17.4; Scale/3.00)"
 
     fun search(q: String, maxPrice: Double?): List<Item> {
-        val qs = "keywords=${enc(q)}&order_by=newest&source=search_box&latitude=$LAT&longitude=$LON&language=es_ES" +
-            (if (maxPrice != null) "&max_sale_price=${maxPrice.toInt()}" else "")
+        val p = Store.place.value
+        val km = Store.radiusKm.value
+        val qs = "keywords=${enc(q)}&order_by=newest&source=search_box&latitude=${p.lat}&longitude=${p.lon}&language=es_ES" +
+            (if (maxPrice != null) "&max_sale_price=${maxPrice.toInt()}" else "") +
+            (if (km > 0) "&distance_in_km=$km" else "")
         val hdr = mapOf("Accept" to "application/json", "X-DeviceOS" to "0", "User-Agent" to IOS_UA)
         val codes = mutableListOf<String>()
         for (path in listOf("general/search", "search")) {

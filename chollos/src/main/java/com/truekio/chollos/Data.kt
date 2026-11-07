@@ -49,6 +49,18 @@ data class Deal(
     val time: Long
 )
 
+data class Place(val name: String, val lat: Double, val lon: Double)
+
+val PLACES = listOf(
+    Place("Madrid", 40.4168, -3.7038), Place("Barcelona", 41.3874, 2.1686), Place("Valencia", 39.4699, -0.3763),
+    Place("Sevilla", 37.3891, -5.9845), Place("Zaragoza", 41.6488, -0.8891), Place("Málaga", 36.7213, -4.4214),
+    Place("Murcia", 37.9922, -1.1307), Place("Palma", 39.5696, 2.6502), Place("Las Palmas", 28.1235, -15.4363),
+    Place("Bilbao", 43.2630, -2.9350), Place("Alicante", 38.3452, -0.4810), Place("Córdoba", 37.8882, -4.7794),
+    Place("Valladolid", 41.6523, -4.7245), Place("Vigo", 42.2406, -8.7207), Place("Gijón", 43.5322, -5.6611),
+    Place("A Coruña", 43.3623, -8.4115), Place("Granada", 37.1773, -3.5986), Place("Pamplona", 42.8125, -1.6458),
+    Place("Santander", 43.4623, -3.8100), Place("Tenerife", 28.4636, -16.2518)
+)
+
 object Store {
     private lateinit var prefs: SharedPreferences
     private var ready = false
@@ -56,6 +68,8 @@ object Store {
     val searches = MutableStateFlow<List<Search>>(emptyList())
     val deals = MutableStateFlow<List<Deal>>(emptyList())
     val intervalMin = MutableStateFlow(15)
+    val place = MutableStateFlow(PLACES[0])
+    val radiusKm = MutableStateFlow(0) // 0 = sin límite
     val loading = MutableStateFlow(false)
     val lastRun = MutableStateFlow(0L)
     val lastStatus = MutableStateFlow("")
@@ -67,6 +81,8 @@ object Store {
         searches.value = readSearches(prefs.getString("searches", "[]") ?: "[]")
         deals.value = readDeals(prefs.getString("deals", "[]") ?: "[]")
         intervalMin.value = prefs.getInt("interval", 15).coerceAtLeast(15)
+        place.value = PLACES.firstOrNull { it.name == prefs.getString("place", "") } ?: PLACES[0]
+        radiusKm.value = prefs.getInt("radius", 0)
         lastRun.value = prefs.getLong("lastRun", 0L)
         lastStatus.value = prefs.getString("lastStatus", "") ?: ""
         ready = true
@@ -80,6 +96,16 @@ object Store {
     fun setInterval(min: Int) {
         intervalMin.value = min.coerceAtLeast(15)
         prefs.edit().putInt("interval", intervalMin.value).apply()
+    }
+
+    fun setPlace(p: Place) {
+        place.value = p
+        prefs.edit().putString("place", p.name).apply()
+    }
+
+    fun setRadius(km: Int) {
+        radiusKm.value = km
+        prefs.edit().putInt("radius", km).apply()
     }
 
     fun addDeals(new: List<Deal>) {
