@@ -496,7 +496,7 @@ object Zalando {
             val win = body.substring(m.range.first, maxOf(end, m.range.last + 1))
             val prices = priceRx.findAll(win).take(3).mapNotNull { it.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() }.toList()
             if (prices.isEmpty()) continue
-            val price = prices.min()
+            val price = prices.minOrNull() ?: continue
             if (maxPrice != null && price > maxPrice) continue
             val title = altRx.find(win)?.groupValues?.get(1)?.let { android.text.Html.fromHtml(it, 0).toString() }
                 ?: href.removePrefix("/").removeSuffix(".html").replace('-', ' ')
