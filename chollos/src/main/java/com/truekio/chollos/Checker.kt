@@ -61,8 +61,15 @@ object Checker {
 
     private fun matches(s: Search, i: Item): Boolean {
         val t = (i.title + " " + i.text).lowercase()
+        if (s.onlyShip && i.ship == false) return false
+        if (s.minPhotos > 0 && (i.photos ?: Int.MAX_VALUE) < s.minPhotos) return false
+        if (s.onlyNew && !isNew(t)) return false
         return s.include.all { anyWord(t, it) } && s.exclude.none { anyWord(t, it) }
     }
+
+    /** Estado nuevo: lo dice el texto del anuncio (Vinted lo trae en el propio anuncio; Wallapop y eBay en el título o la descripción). */
+    private val newRx = Regex("nuev[oa]s?|estrenar|etiqueta|precintad|sin usar|neuf|\\bnew\\b")
+    private fun isNew(t: String) = newRx.containsMatchIn(t)
 
     /** "hombre/hombres/caballero" vale si aparece cualquiera de las alternativas. */
     private fun anyWord(text: String, spec: String) =

@@ -65,7 +65,10 @@ data class Search(
     val exclude: List<String> = emptyList(),
     val vintedUrl: String = "",
     val category: String = "", // "" = todo
-    val alts: List<String> = emptyList() // otras formas de escribir la búsqueda
+    val alts: List<String> = emptyList(), // otras formas de escribir la búsqueda
+    val onlyShip: Boolean = false,
+    val minPhotos: Int = 0,
+    val onlyNew: Boolean = false
 )
 
 /** Un anuncio encontrado. price = 0 si no se conoce. */
@@ -80,7 +83,8 @@ data class Item(
     val lat: Double? = null,
     val lon: Double? = null,
     val ship: Boolean? = null,
-    val seller: String = ""
+    val seller: String = "",
+    val photos: Int? = null // nº de fotos si la web lo dice
 )
 
 data class Deal(
@@ -302,7 +306,7 @@ object Store {
             put("max", s.maxPrice ?: JSONObject.NULL)
             put("disc", s.minDiscount)
             put("src", JSONArray(s.sources.toList()))
-            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude)); put("vurl", s.vintedUrl); put("cat", s.category); put("alts", JSONArray(s.alts))
+            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude)); put("vurl", s.vintedUrl); put("cat", s.category); put("alts", JSONArray(s.alts)); put("ship", s.onlyShip); put("photos", s.minPhotos); put("new", s.onlyNew)
         })
         return a.toString()
     }
@@ -318,7 +322,8 @@ object Store {
                 minDiscount = o.optInt("disc", 30),
                 sources = if (src == null) DEFAULT_SOURCES else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
                 include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc")),
-                vintedUrl = o.optString("vurl"), category = o.optString("cat"), alts = strList(o.optJSONArray("alts"))
+                vintedUrl = o.optString("vurl"), category = o.optString("cat"), alts = strList(o.optJSONArray("alts")),
+                onlyShip = o.optBoolean("ship"), minPhotos = o.optInt("photos"), onlyNew = o.optBoolean("new")
             )
         }
     }.getOrDefault(emptyList())

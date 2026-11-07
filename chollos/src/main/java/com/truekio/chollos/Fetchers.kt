@@ -95,7 +95,7 @@ object Wallapop {
             Item(
                 id, SRC_WALLAPOP, o.optString("title"), priceOf(o.opt("price")), "https://es.wallapop.com/item/$slug", img, o.optString("description"),
                 lat = loc?.optDouble("latitude")?.takeIf { !it.isNaN() }, lon = loc?.optDouble("longitude")?.takeIf { !it.isNaN() },
-                ship = ship, seller = o.optString("user_id")
+                ship = ship, seller = o.optString("user_id"), photos = o.optJSONArray("images")?.length()
             )
         }
     }

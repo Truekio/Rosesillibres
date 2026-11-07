@@ -338,6 +338,8 @@ private fun SearchesScreen() {
                                     val max = s.maxPrice?.let { "Máx. ${Checker.fmt(it)}" } ?: "Sin precio máximo"
                                     Text(max, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     stats[s.id]?.let { Text("Última revisión: $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.tertiary) }
+                                    listOfNotNull("Solo con envío".takeIf { s.onlyShip }, "Solo nuevo".takeIf { s.onlyNew }, "≥${s.minPhotos} fotos".takeIf { s.minPhotos > 0 })
+                                        .takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     if (s.vintedUrl.isNotBlank()) Text("Con filtros de Vinted", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.exclude.isNotEmpty()) Text("Excluye: " + s.exclude.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -386,6 +388,9 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
     var sources by remember { mutableStateOf(initial?.sources ?: DEFAULT_SOURCES) }
     var vlink by remember { mutableStateOf(initial?.vintedUrl ?: "") }
     var cat by remember { mutableStateOf(initial?.category ?: "") }
+    var onlyShip by remember { mutableStateOf(initial?.onlyShip ?: false) }
+    var onlyNew by remember { mutableStateOf(initial?.onlyNew ?: false) }
+    var minPhotos by remember { mutableStateOf(initial?.minPhotos?.takeIf { it > 0 }?.toString() ?: "") }
     var alts by remember { mutableStateOf(initial?.alts?.joinToString(", ") ?: "") }
     val ctx = LocalContext.current
     AlertDialog(
@@ -398,6 +403,13 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(alts, { alts = it }, label = { Text("También buscar como (opcional)") }, maxLines = 2,
                     supportingText = { Text("Otras formas de escribirlo o con erratas, separadas por comas. Ej.: oncloud, on clod") })
+                Text("Filtros del anuncio (opcionales)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip(selected = onlyShip, onClick = { onlyShip = !onlyShip }, label = { Text("Solo con envío") })
+                    Chip(selected = onlyNew, onClick = { onlyNew = !onlyNew }, label = { Text("Solo estado nuevo") })
+                }
+                OutlinedTextField(minPhotos, { minPhotos = it.filter(Char::isDigit).take(2) }, label = { Text("Mínimo de fotos (opcional)") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 Text("Tipo de producto", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOf("") + ALL_CATEGORIES).forEach { c ->
@@ -436,7 +448,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
                 onAdd(Search(initial?.id ?: UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
-                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim(), cat, words(alts)))
+                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim(), cat, words(alts), onlyShip, minPhotos.toIntOrNull() ?: 0, onlyNew))
             }) { Text(if (initial == null) "Añadir" else "Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
