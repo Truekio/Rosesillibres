@@ -51,6 +51,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -366,7 +367,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ALL_SOURCES.forEach { src ->
-                        FilterChip(selected = src in sources, onClick = { sources = if (src in sources) sources - src else sources + src },
+                        Chip(selected = src in sources, onClick = { sources = if (src in sources) sources - src else sources + src },
                             label = { Text(sourceLabel(src)) })
                     }
                 }
@@ -410,12 +411,12 @@ private fun SettingsScreen() {
             Section("Wallapop · zona") {
                 Text("Ciudad de referencia", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PLACES.forEach { p -> FilterChip(selected = place.name == p.name, onClick = { Store.setPlace(p) }, label = { Text(p.name) }) }
+                    PLACES.forEach { p -> Chip(selected = place.name == p.name, onClick = { Store.setPlace(p) }, label = { Text(p.name) }) }
                 }
                 Text("Distancia máxima", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(0, 10, 25, 50, 100, 200).forEach { km ->
-                        FilterChip(selected = radius == km, onClick = { Store.setRadius(km) }, label = { Text(if (km == 0) "Toda España" else "$km km") })
+                        Chip(selected = radius == km, onClick = { Store.setRadius(km) }, label = { Text(if (km == 0) "Toda España" else "$km km") })
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -426,7 +427,7 @@ private fun SettingsScreen() {
             Section("Frecuencia") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(15, 30, 60, 180, 360).forEach { m ->
-                        FilterChip(selected = interval == m, onClick = { Store.setInterval(m); Scheduler.ensure(ctx) },
+                        Chip(selected = interval == m, onClick = { Store.setInterval(m); Scheduler.ensure(ctx) },
                             label = { Text(if (m < 60) "$m min" else "${m / 60} h") })
                     }
                 }
@@ -446,4 +447,13 @@ private fun SettingsScreen() {
             }
         }
     }
+}
+
+/** Opción seleccionable con ✓ cuando está activa, para que se vea claro qué está marcado. */
+@Composable
+private fun Chip(selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit) {
+    FilterChip(
+        selected = selected, onClick = onClick, label = label,
+        leadingIcon = if (selected) ({ Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }) else null
+    )
 }
