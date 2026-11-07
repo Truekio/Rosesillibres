@@ -412,3 +412,66 @@ object Ebay {
         return items.distinctBy { it.id }
     }
 }
+
+
+/** Tiendas oficiales hechas con Shopify: publican sus productos en /collections/<x>/products.json. */
+object Shop {
+    /** Los títulos vienen en francés: se añaden las palabras equivalentes en español para poder filtrar. */
+    private val synonyms = listOf(
+        "sans manches" to "chaleco sin mangas",
+        "doudoune" to "plumas plumífero",
+        "capuche" to "capucha",
+        "veste" to "chaqueta",
+        "manteau" to "abrigo",
+        "parka" to "parka",
+        "réversible" to "reversible",
+        "homme" to "hombre",
+        "femme" to "mujer",
+        "enfant" to "niño niña"
+    )
+
+    /**
+     * store: dirección base (con idioma). collections: colecciones a mirar (outlet, soldes...).
+     * brand: palabras de la búsqueda que son el nombre de la tienda y no del producto.
+     */
+    fun search(store: String, collections: List<String>, brand: List<String>, q: String, maxPrice: Double?): List<Item> {
+        val words = q.lowercase().split(' ').filter { it.length > 1 && it !in brand }
+        val out = LinkedHashMap<String, Item>()
+        var okAny = false
+        var lastErr = ""
+        for (c in collections) {
+            val r = runCatching { http("$store/collections/$c/products.json?limit=250", mapOf("Accept" to "application/json")) }
+                .getOrElse { lastErr = it.message ?: "error"; null } ?: continue
+            if (r.code != 200) { lastErr = "HTTP ${r.code}"; continue }
+            okAny = true
+            val arr = runCatching { JSONObject(r.body).getJSONArray("products") }.getOrNull() ?: continue
+            for (i in 0 until arr.length()) {
+                val p = arr.getJSONObject(i)
+                val title = p.optString("title")
+                val handle = p.optString("handle")
+                val vars = p.optJSONArray("variants") ?: continue
+                var price = Double.MAX_VALUE
+                var before = 0.0
+                val sizes = mutableListOf<String>()
+                for (j in 0 until vars.length()) {
+                    val v = vars.getJSONObject(j)
+                    if (!v.optBoolean("available", true)) continue
+                    val pr = v.optString("price").toDoubleOrNull() ?: continue
+                    if (pr < price) { price = pr; before = v.optString("compare_at_price").toDoubleOrNull() ?: 0.0 }
+                    sizes += v.optString("title")
+                }
+                if (price == Double.MAX_VALUE) continue // agotado
+                var text = title.lowercase() + " " + p.optString("product_type").lowercase() + " " + p.optString("tags").lowercase()
+                for ((fr, es) in synonyms) if (text.contains(fr)) text += " $es"
+                text += " tallas ${sizes.distinct().joinToString(" ")}"
+                if (!words.all { w -> Regex("(?<![\\p{L}\\d])" + Regex.escape(w) + "(?![\\p{L}\\d])").containsMatchIn(text) }) continue
+                if (maxPrice != null && price > maxPrice) continue
+                val img = p.optJSONArray("images")?.optJSONObject(0)?.optString("src")
+                val shown = if (before > price) "$title (antes ${Checker.fmt(before)})" else title
+                out[handle] = Item("jott_$handle", SRC_JOTT, shown, price, "$store/products/$handle", img, text)
+            }
+        }
+        if (!okAny) error("Jott: $lastErr")
+        return out.values.toList()
+    }
+}
