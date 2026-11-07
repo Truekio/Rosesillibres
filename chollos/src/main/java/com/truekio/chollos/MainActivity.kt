@@ -389,9 +389,20 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                 OutlinedTextField(exc, { exc = it }, label = { Text("Excluir (ej. mujer, niño)") }, singleLine = true)
                 OutlinedTextField(vlink, { vlink = it }, label = { Text("Enlace de Vinted con filtros (opcional)") }, maxLines = 3,
                     supportingText = { Text("Categoría, talla, marca, estado, color…: elígelos en vinted.es y pega aquí la dirección.") })
-                TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.vinted.es/catalog")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
-                    Text("Abrir Vinted para elegir filtros")
-                }
+                // Se abre en el navegador (no en la app de Vinted) para poder ver y copiar la dirección con los filtros.
+                TextButton(onClick = {
+                    val i = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
+                        .setData(Uri.parse("https://www.vinted.es/catalog")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { ctx.startActivity(i) }.onFailure {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.vinted.es/catalog")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }) { Text("Abrir Vinted en el navegador") }
+                TextButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                    val t = cm?.primaryClip?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
+                    if (t.contains("vinted")) vlink = t
+                    else android.widget.Toast.makeText(ctx, "Copia primero el enlace de Vinted", android.widget.Toast.LENGTH_SHORT).show()
+                }) { Text("Pegar enlace copiado") }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ALL_SOURCES.forEach { src ->
                         Chip(selected = src in sources, onClick = { sources = if (src in sources) sources - src else sources + src },
