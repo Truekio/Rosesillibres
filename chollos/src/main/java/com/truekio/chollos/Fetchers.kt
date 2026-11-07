@@ -90,27 +90,49 @@ object Vinted {
     /** Vinted (desde sept. 2026) pide token anónimo, anon-id y csrf, que da la propia web al cargar la portada. */
     private fun warmUp(force: Boolean) {
         if (!force && token.isNotEmpty() && System.currentTimeMillis() - warmAt < 15 * 60_000) return
-        val c = URL("$WWW/").openConnection() as HttpURLConnection
-        try {
-            c.connectTimeout = 15000; c.readTimeout = 20000
-            c.setRequestProperty("User-Agent", UA)
-            c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
-            c.setRequestProperty("Accept-Language", "es-ES,es;q=0.9")
-            if (c.responseCode !in 200..299) error("portada HTTP ${c.responseCode}")
-            val cookies = c.headerFields["Set-Cookie"].orEmpty().map { it.substringBefore(';') }
-            cookie = cookies.joinToString("; ")
-            token = cookies.firstOrNull { it.startsWith("access_token_web=") }?.substringAfter('=') ?: ""
-            anonId = c.getHeaderField("X-Anon-Id")?.trim() ?: ""
-            val body = c.inputStream.bufferedReader().use { it.readText().take(600_000) }
-            val k = body.indexOf("CSRF_TOKEN")
-            csrf = if (k >= 0)
-                Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-                    .find(body.substring(k, minOf(body.length, k + 300)))?.value ?: "" else ""
-            warmAt = System.currentTimeMillis()
-        } finally {
-            c.disconnect()
+        val jar = linkedMapOf<String, String>()
+        var anon = ""
+        var body = ""
+        var next = "$WWW/"
+        // Seguimos las redirecciones a mano: las cookies suelen venir en el primer salto y Java las descarta.
+        for (hop in 0..5) {
+            val c = URL(next).openConnection() as HttpURLConnection
+            try {
+                c.instanceFollowRedirects = false
+                c.connectTimeout = 15000; c.readTimeout = 20000
+                c.setRequestProperty("User-Agent", UA)
+                c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+                c.setRequestProperty("Accept-Language", "es-ES,es;q=0.9")
+                if (jar.isNotEmpty()) c.setRequestProperty("Cookie", jar.entries.joinToString("; ") { "${it.key}=${it.value}" })
+                val code = c.responseCode
+                c.headerFields.entries.filter { it.key.equals("Set-Cookie", true) }.flatMap { it.value }.forEach {
+                    val kv = it.substringBefore(';'); jar[kv.substringBefore('=')] = kv.substringAfter('=')
+                }
+                c.getHeaderField("X-Anon-Id")?.trim()?.takeIf { it.isNotEmpty() }?.let { anon = it }
+                if (code in 300..399) {
+                    val loc = c.getHeaderField("Location") ?: break
+                    next = if (loc.startsWith("http")) loc else URL(URL(next), loc).toString()
+                    continue
+                }
+                if (code !in 200..299) error("portada HTTP $code")
+                body = c.inputStream.bufferedReader().use { it.readText().take(600_000) }
+                break
+            } finally {
+                c.disconnect()
+            }
         }
+        cookie = jar.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        token = jar["access_token_web"] ?: ""
+        anonId = anon
+        val k = body.indexOf("CSRF_TOKEN")
+        csrf = if (k >= 0)
+            Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+                .find(body.substring(k, minOf(body.length, k + 300)))?.value ?: "" else ""
+        warmAt = System.currentTimeMillis()
+        lastCookieNames = jar.keys.joinToString(",")
     }
+
+    private var lastCookieNames = ""
 
     fun search(q: String, maxPrice: Double?): List<Item> {
         val url = "$API/svc-catalogue/items?search_text=${enc(q)}&order=newest_first&per_page=40&page=1" +
@@ -130,7 +152,7 @@ object Vinted {
             r = http(url, h)
             if (r.code == 200) break
         }
-        if (r == null || r.code != 200) error("Vinted HTTP ${r?.code} (token=${token.isNotEmpty()}, anon=${anonId.isNotEmpty()}, csrf=${csrf.isNotEmpty()})")
+        if (r == null || r.code != 200) error("Vinted HTTP ${r?.code} (token=${token.isNotEmpty()}, anon=${anonId.isNotEmpty()}, csrf=${csrf.isNotEmpty()}, cookies=$lastCookieNames)")
         val root = JSONObject(r.body)
         val arr = root.optJSONArray("items") ?: root.optJSONArray("catalog_items")
             ?: error("respuesta sin lista de anuncios; claves: " + root.keys().asSequence().take(8).joinToString(","))
