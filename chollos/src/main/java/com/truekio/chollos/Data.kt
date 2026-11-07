@@ -25,7 +25,9 @@ data class Search(
     val query: String,
     val maxPrice: Double?,
     val minDiscount: Int,
-    val sources: Set<String>
+    val sources: Set<String>,
+    val include: List<String> = emptyList(),
+    val exclude: List<String> = emptyList()
 )
 
 /** Un anuncio encontrado. price = 0 si no se conoce. */
@@ -35,7 +37,8 @@ data class Item(
     val title: String,
     val price: Double,
     val url: String,
-    val image: String? = null
+    val image: String? = null,
+    val text: String = ""
 )
 
 data class Deal(
@@ -146,6 +149,7 @@ object Store {
             put("max", s.maxPrice ?: JSONObject.NULL)
             put("disc", s.minDiscount)
             put("src", JSONArray(s.sources.toList()))
+            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude))
         })
         return a.toString()
     }
@@ -159,10 +163,13 @@ object Store {
                 id = o.getString("id"), query = o.getString("q"),
                 maxPrice = if (o.isNull("max")) null else o.getDouble("max"),
                 minDiscount = o.optInt("disc", 30),
-                sources = if (src == null) ALL_SOURCES.toSet() else (0 until src.length()).map { i -> src.getString(i) }.toSet()
+                sources = if (src == null) ALL_SOURCES.toSet() else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
+                include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc"))
             )
         }
     }.getOrDefault(emptyList())
+
+    private fun strList(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
 
     private fun writeDeals(list: List<Deal>): String {
         val a = JSONArray()

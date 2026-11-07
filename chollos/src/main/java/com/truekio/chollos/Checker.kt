@@ -29,6 +29,15 @@ object Checker {
         "caja vacia", "repuesto", "busco", "compro", "reservad", "vendido", "bloqueado", "icloud", "cambio por"
     )
 
+    /** La palabra debe aparecer entera ("42" no vale para "142" ni "42,5"). */
+    private fun hasWord(text: String, w: String) =
+        Regex("(?<![\\p{L}\\d])" + Regex.escape(w.lowercase()) + "(?![\\p{L}]|[.,]?\\d)").containsMatchIn(text)
+
+    private fun matches(s: Search, i: Item): Boolean {
+        val t = (i.title + " " + i.text).lowercase()
+        return s.include.all { hasWord(t, it) } && s.exclude.none { hasWord(t, it) }
+    }
+
     private fun isJunk(title: String) = title.lowercase().let { t -> junk.any { t.contains(it) } }
 
     private fun median(l: List<Double>): Double {
@@ -54,7 +63,8 @@ object Checker {
                                 SRC_VINTED -> Vinted.search(s.query, s.maxPrice)
                                 else -> Chollometro.search(s.query, s.maxPrice)
                             }
-                        }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
+                        }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null }
+                            ?.filter { matches(s, it) } ?: continue
 
                         val firstRun = !Store.hasSeen(key)
                         val seen = Store.seenIds(key)

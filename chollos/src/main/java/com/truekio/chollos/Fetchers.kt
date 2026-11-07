@@ -63,7 +63,7 @@ object Wallapop {
             val img = o.optJSONArray("images")?.optJSONObject(0)?.let { im ->
                 im.optJSONObject("urls")?.optString("small")?.ifBlank { null } ?: im.optString("small").ifBlank { null }
             }
-            Item(id, SRC_WALLAPOP, o.optString("title"), priceOf(o.opt("price")), "https://es.wallapop.com/item/$slug", img)
+            Item(id, SRC_WALLAPOP, o.optString("title"), priceOf(o.opt("price")), "https://es.wallapop.com/item/$slug", img, o.optString("description"))
         }
     }
 }
@@ -96,7 +96,7 @@ object Vinted {
             val link = o.optString("url").ifBlank { "https://www.vinted.es/items/$id" }
             val extra = listOf(o.optString("brand_title"), o.optString("size_title")).filter { it.isNotBlank() }.joinToString(" · ")
             val title = o.optString("title") + if (extra.isNotEmpty()) " ($extra)" else ""
-            Item(id, SRC_VINTED, title, priceOf(o.opt("price")), link, o.optJSONObject("photo")?.optString("url")?.ifBlank { null })
+            Item(id, SRC_VINTED, title, priceOf(o.opt("price")), link, o.optJSONObject("photo")?.optString("url")?.ifBlank { null }, extra)
         }
     }
 }

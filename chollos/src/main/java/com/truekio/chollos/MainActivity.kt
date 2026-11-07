@@ -167,6 +167,8 @@ private fun SearchesScreen() {
                         Column(Modifier.weight(1f)) {
                             Text(s.query, fontWeight = FontWeight.Bold)
                             val max = s.maxPrice?.let { "máx. ${Checker.fmt(it)} · " } ?: ""
+                            if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 12.sp)
+                            if (s.exclude.isNotEmpty()) Text("Excluye: " + s.exclude.joinToString(", "), fontSize = 12.sp)
                             Text("$max-${s.minDiscount}% vs mediana · " + s.sources.joinToString { sourceLabel(it) }, fontSize = 12.sp)
                         }
                         IconButton(onClick = {
@@ -189,13 +191,17 @@ private fun AddSearchDialog(onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
     var query by remember { mutableStateOf("") }
     var max by remember { mutableStateOf("") }
     var disc by remember { mutableStateOf("30") }
+    var inc by remember { mutableStateOf("") }
+    var exc by remember { mutableStateOf("") }
     var sources by remember { mutableStateOf(ALL_SOURCES.toSet()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Nueva búsqueda") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(query, { query = it }, label = { Text("Producto (ej. Nintendo Switch OLED)") }, singleLine = true)
+                OutlinedTextField(query, { query = it }, label = { Text("Producto, corto (ej. zapatillas on)") }, singleLine = true)
+                OutlinedTextField(inc, { inc = it }, label = { Text("Debe incluir (ej. 42, hombre)") }, singleLine = true)
+                OutlinedTextField(exc, { exc = it }, label = { Text("Excluir (ej. mujer, niño)") }, singleLine = true)
                 OutlinedTextField(max, { max = it }, label = { Text("Avisar si cuesta menos de (€, opcional)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(disc, { disc = it }, label = { Text("…o si está X% por debajo de lo normal") }, singleLine = true,
@@ -211,12 +217,15 @@ private fun AddSearchDialog(onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
                 onAdd(Search(UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
-                    (disc.toIntOrNull() ?: 30).coerceIn(5, 90), sources))
+                    (disc.toIntOrNull() ?: 30).coerceIn(5, 90), sources, words(inc), words(exc)))
             }) { Text("Añadir") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }
+
+@Composable
+private fun words(s: String) = s.split(",", ";").map { it.trim() }.filter { it.isNotEmpty() }
 
 @Composable
 private fun SettingsScreen() {
