@@ -15,6 +15,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -22,6 +23,13 @@ import kotlin.random.Random
 
 object Checker {
     private val mutex = Mutex()
+    private val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+    /** Lanza una comprobación que no depende de la pantalla: sigue aunque cambies de pestaña. */
+    fun runAsync(ctx: Context) {
+        val app = ctx.applicationContext
+        appScope.launch { run(app) }
+    }
 
     /** Palabras que delatan anuncios que no sirven (piezas, cajas vacías, compras...). */
     private val junk = listOf(
@@ -47,7 +55,7 @@ object Checker {
 
     suspend fun run(ctx: Context): Int {
         Store.init(ctx)
-        if (!mutex.tryLock()) return 0
+        mutex.lock() // si ya hay una en marcha, esta espera su turno
         var found = 0
         val errors = mutableListOf<String>()
         try {

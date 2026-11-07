@@ -205,7 +205,7 @@ private fun DealsScreen() {
     }
     Column(Modifier.fillMaxSize()) {
         Header("Chollos", sub) {
-            IconButton(onClick = { if (!loading) scope.launch { Checker.run(ctx) } }) {
+            IconButton(onClick = { if (!loading) Checker.runAsync(ctx) }) {
                 if (loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.Refresh, "Buscar ahora")
             }
@@ -332,7 +332,7 @@ private fun SearchesScreen() {
     if (adding) SearchDialog(null, onDismiss = { adding = false }) { s ->
         Store.setSearches(Store.searches.value + s)
         adding = false
-        scope.launch { Checker.run(ctx) }
+        Checker.runAsync(ctx)
     }
     editing?.let { old ->
         SearchDialog(old, onDismiss = { editing = null }) { s ->
@@ -340,7 +340,7 @@ private fun SearchesScreen() {
             if (s != old) Store.forget(old.id)
             Store.setSearches(Store.searches.value.map { if (it.id == old.id) s else it })
             editing = null
-            if (s != old) scope.launch { Checker.run(ctx) }
+            if (s != old) Checker.runAsync(ctx)
         }
     }
 }
