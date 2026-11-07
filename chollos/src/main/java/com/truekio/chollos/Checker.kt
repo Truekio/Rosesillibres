@@ -37,6 +37,24 @@ object Checker {
         "caja vacia", "repuesto", "busco", "compro", "reservad", "vendido", "bloqueado", "icloud", "cambio por"
     )
 
+    /** La búsqueda tal cual, las otras formas que escribiste y la versión sin espacios ("on cloud" -> "oncloud"). */
+    private fun queries(s: Search): List<String> {
+        val q = s.query.trim()
+        val words = q.split(' ').filter { it.isNotEmpty() }
+        val joined = if (words.size in 2..3) listOf(words.joinToString("")) else emptyList()
+        return (listOf(q) + s.alts + joined).map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+    }
+
+    private suspend fun fetch(src: String, s: Search, q: String): List<Item> = when (src) {
+        SRC_WALLAPOP -> Wallapop.search(q, s.maxPrice)
+        SRC_VINTED -> Vinted.search(q, s.maxPrice, s.vintedUrl)
+        SRC_EBAY -> Ebay.search(q, s.maxPrice)
+        SRC_CHOLLOMETRO -> Pepper.search("https://www.chollometro.com/rss", SRC_CHOLLOMETRO, q, s.maxPrice)
+        SRC_JOTT -> Shop.search("https://jott.com/es", listOf("outlet", "soldes"), listOf("jott"), q, s.maxPrice)
+        SRC_DEALABS -> Pepper.search("https://www.dealabs.com/rss", SRC_DEALABS, q, s.maxPrice)
+        else -> Pepper.search("https://www.mydealz.de/rss", SRC_MYDEALZ, q, s.maxPrice)
+    }
+
     /** La palabra debe aparecer entera ("42" no vale para "142" ni "42,5"). */
     private fun hasWord(text: String, w: String) =
         Regex("(?<![\\p{L}\\d])" + Regex.escape(w.lowercase()) + "(?![\\p{L}]|[.,]?\\d)").containsMatchIn(text)
@@ -69,15 +87,14 @@ object Checker {
                     for (src in s.sources.filter { sourceFits(it, s.category) }) {
                         val key = "${s.id}_$src"
                         val raw = runCatching {
-                            when (src) {
-                                SRC_WALLAPOP -> Wallapop.search(s.query, s.maxPrice)
-                                SRC_VINTED -> Vinted.search(s.query, s.maxPrice, s.vintedUrl)
-                                SRC_EBAY -> Ebay.search(s.query, s.maxPrice)
-                                SRC_CHOLLOMETRO -> Pepper.search("https://www.chollometro.com/rss", SRC_CHOLLOMETRO, s.query, s.maxPrice)
-                                SRC_JOTT -> Shop.search("https://jott.com/es", listOf("outlet", "soldes"), listOf("jott"), s.query, s.maxPrice)
-                                SRC_DEALABS -> Pepper.search("https://www.dealabs.com/rss", SRC_DEALABS, s.query, s.maxPrice)
-                                else -> Pepper.search("https://www.mydealz.de/rss", SRC_MYDEALZ, s.query, s.maxPrice)
+                            val all = LinkedHashMap<String, Item>()
+                            queries(s).forEachIndexed { n, q ->
+                                if (n > 0) delay(700)
+                                // La primera forma de escribirlo debe funcionar; si falla una variante se ignora.
+                                val r = if (n == 0) fetch(src, s, q) else runCatching { fetch(src, s, q) }.getOrDefault(emptyList())
+                                r.forEach { all.putIfAbsent(it.id, it) }
                             }
+                            all.values.toList()
                         }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
                         val passed = raw.count { matches(s, it) }
                         statRaw[s.id] = (statRaw[s.id] ?: 0) + raw.size

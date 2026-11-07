@@ -386,6 +386,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
     var sources by remember { mutableStateOf(initial?.sources ?: DEFAULT_SOURCES) }
     var vlink by remember { mutableStateOf(initial?.vintedUrl ?: "") }
     var cat by remember { mutableStateOf(initial?.category ?: "") }
+    var alts by remember { mutableStateOf(initial?.alts?.joinToString(", ") ?: "") }
     val ctx = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -395,6 +396,8 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
                 OutlinedTextField(query, { query = it }, label = { Text("Producto, corto (ej. zapatillas on)") }, singleLine = true)
                 OutlinedTextField(max, { max = it }, label = { Text("Precio máximo en € (opcional)") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(alts, { alts = it }, label = { Text("También buscar como (opcional)") }, maxLines = 2,
+                    supportingText = { Text("Otras formas de escribirlo o con erratas, separadas por comas. Ej.: oncloud, on clod") })
                 Text("Tipo de producto", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOf("") + ALL_CATEGORIES).forEach { c ->
@@ -433,7 +436,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
                 onAdd(Search(initial?.id ?: UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
-                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim(), cat))
+                    initial?.minDiscount ?: 30, sources, words(inc), words(exc), vlink.trim(), cat, words(alts)))
             }) { Text(if (initial == null) "Añadir" else "Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
