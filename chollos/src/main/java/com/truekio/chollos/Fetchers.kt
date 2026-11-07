@@ -524,3 +524,38 @@ object Zalando {
         return out.values.toList()
     }
 }
+
+/** PcComponentes: se leen del HTML de la búsqueda los enlaces de producto que llevan nombre y precio. */
+object PcComponentes {
+    private val aRx = Regex("""<a\b[^>]*?href=["'](/[a-z0-9][a-z0-9\-]{10,})["'][^>]*>(.*?)</a>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val tagRx = Regex("<[^>]+>")
+    private val priceRx = Regex("""(\d{1,5}(?:\.\d{3})*(?:,\d{1,2})?)\s*€""")
+    private val imgRx = Regex("""https://img\.pccomponentes\.com/[^"'\s)]+""")
+
+    fun search(q: String, maxPrice: Double?): List<Item> {
+        val r = http("https://www.pccomponentes.com/buscar/?query=${enc(q)}", mapOf("Accept" to "text/html"))
+        if (r.code != 200) error("PcComponentes HTTP ${r.code}")
+        val body = r.body
+        val anchors = aRx.findAll(body).toList()
+        val out = LinkedHashMap<String, Item>()
+        for (m in anchors) {
+            val href = m.groupValues[1]
+            if (href in out) continue
+            val inner = m.groupValues[2]
+            val text = android.text.Html.fromHtml(tagRx.replace(inner, " "), 0).toString().replace(Regex("\\s+"), " ").trim()
+            val pm = priceRx.find(text) ?: continue
+            val prices = priceRx.findAll(text).take(2).mapNotNull { it.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() }.toList()
+            val price = prices.minOrNull() ?: continue
+            val title = text.substring(0, pm.range.first).trim().ifBlank { href.removePrefix("/").replace('-', ' ') }
+            if (title.length < 6 || (maxPrice != null && price > maxPrice)) continue
+            out[href] = Item("pcc_" + href.removePrefix("/"), SRC_PCCOMP, title.take(140), price,
+                "https://www.pccomponentes.com$href", imgRx.find(inner)?.value, title)
+        }
+        if (out.isEmpty()) {
+            val i = body.indexOf('€').let { if (it < 0) 0 else it }
+            val sample = body.substring(maxOf(0, i - 150), minOf(body.length, i + 150)).replace(Regex("\\s+"), " ")
+            error("PcComponentes: sin productos reconocidos (${body.length} bytes, ${anchors.size} enlaces). Muestra: $sample")
+        }
+        return out.values.toList()
+    }
+}
