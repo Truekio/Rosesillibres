@@ -50,6 +50,7 @@ object Checker {
         SRC_VINTED -> Vinted.search(q, s.maxPrice, s.vintedUrl)
         SRC_EBAY -> Ebay.search(q, s.maxPrice)
         SRC_CHOLLOMETRO -> Pepper.search("https://www.chollometro.com/rss", SRC_CHOLLOMETRO, q, s.maxPrice)
+        SRC_ZALANDO -> Zalando.search(q, s.maxPrice)
         SRC_JOTT -> Shop.search("https://jott.com/es", listOf("outlet", "soldes"), listOf("jott"), q, s.maxPrice)
         SRC_DEALABS -> Pepper.search("https://www.dealabs.com/rss", SRC_DEALABS, q, s.maxPrice)
         else -> Pepper.search("https://www.mydealz.de/rss", SRC_MYDEALZ, q, s.maxPrice)

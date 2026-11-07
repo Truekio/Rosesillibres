@@ -475,3 +475,39 @@ object Shop {
         return out.values.toList()
     }
 }
+
+/** Zalando.es: no tiene API pública; se leen los enlaces de producto y los precios del HTML del catálogo. */
+object Zalando {
+    private val linkRx = Regex("""href=["'](/[a-z0-9][a-z0-9\-]+\.html)["']""")
+    private val priceRx = Regex("""(\d{1,4}(?:\.\d{3})*,\d{2})\s*(?:€|&euro;|&#8364;)""")
+    private val imgRx = Regex("""https://img\d*\.ztat\.net/[^"'\s)]+""")
+    private val altRx = Regex("""(?:alt|aria-label|title)=["']([^"']{8,150})["']""")
+
+    fun search(q: String, maxPrice: Double?): List<Item> {
+        val r = http("https://www.zalando.es/catalogo/?q=${enc(q)}&order=activation_date", mapOf("Accept" to "text/html"))
+        if (r.code != 200) error("Zalando HTTP ${r.code}")
+        val body = r.body
+        val hits = linkRx.findAll(body).toList()
+        val out = LinkedHashMap<String, Item>()
+        for ((n, m) in hits.withIndex()) {
+            val href = m.groupValues[1]
+            if (href in out) continue
+            val end = minOf(body.length, m.range.first + 2500, hits.drop(n + 1).firstOrNull { it.groupValues[1] != href }?.range?.first ?: Int.MAX_VALUE)
+            val win = body.substring(m.range.first, maxOf(end, m.range.last + 1))
+            val prices = priceRx.findAll(win).take(3).mapNotNull { it.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() }.toList()
+            if (prices.isEmpty()) continue
+            val price = prices.min()
+            if (maxPrice != null && price > maxPrice) continue
+            val title = altRx.find(win)?.groupValues?.get(1)?.let { android.text.Html.fromHtml(it, 0).toString() }
+                ?: href.removePrefix("/").removeSuffix(".html").replace('-', ' ')
+            out[href] = Item("zal_" + href.removePrefix("/").removeSuffix(".html"), SRC_ZALANDO, title, price,
+                "https://www.zalando.es$href", imgRx.find(win)?.value, title + " " + href.replace('-', ' '))
+        }
+        if (out.isEmpty()) {
+            val i = body.indexOf('€').let { if (it < 0) 0 else it }
+            val sample = body.substring(maxOf(0, i - 150), minOf(body.length, i + 150)).replace(Regex("\\s+"), " ")
+            error("Zalando: sin productos reconocidos (${body.length} bytes, ${hits.size} enlaces). Muestra: $sample")
+        }
+        return out.values.toList()
+    }
+}

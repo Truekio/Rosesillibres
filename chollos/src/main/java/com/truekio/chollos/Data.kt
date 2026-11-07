@@ -14,8 +14,9 @@ const val SRC_EBAY = "EBAY"
 const val SRC_DEALABS = "DEALABS"
 const val SRC_MYDEALZ = "MYDEALZ"
 const val SRC_JOTT = "JOTT"
+const val SRC_ZALANDO = "ZALANDO"
 
-val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_EBAY, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ, SRC_JOTT)
+val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_EBAY, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ, SRC_JOTT, SRC_ZALANDO)
 val DEFAULT_SOURCES = setOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
 
 /** Webs de chollos de la comunidad (formato RSS de Pepper): no hay mediana de precios, cada oferta ya es un chollo. */
@@ -40,6 +41,7 @@ fun sourceFits(src: String, cat: String) = when {
     cat.isBlank() -> true
     src == SRC_VINTED -> cat == CAT_ROPA || cat == CAT_DEPORTE
     src == SRC_JOTT -> cat == CAT_ROPA
+    src == SRC_ZALANDO -> cat == CAT_ROPA || cat == CAT_DEPORTE
     else -> true
 }
 
@@ -51,6 +53,7 @@ fun sourceLabel(s: String) = when (s) {
     SRC_DEALABS -> "Dealabs (FR)"
     SRC_MYDEALZ -> "Mydealz (DE)"
     SRC_JOTT -> "Jott (oficial)"
+    SRC_ZALANDO -> "Zalando"
     else -> s
 }
 
