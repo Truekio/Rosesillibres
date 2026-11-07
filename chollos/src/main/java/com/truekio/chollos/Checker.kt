@@ -63,7 +63,9 @@ object Checker {
                             when (src) {
                                 SRC_WALLAPOP -> Wallapop.search(s.query, s.maxPrice)
                                 SRC_VINTED -> Vinted.search(s.query, s.maxPrice)
-                                else -> Chollometro.search(s.query, s.maxPrice)
+                                SRC_CHOLLOMETRO -> Pepper.search("https://www.chollometro.com/rss", SRC_CHOLLOMETRO, s.query, s.maxPrice)
+                                SRC_DEALABS -> Pepper.search("https://www.dealabs.com/rss", SRC_DEALABS, s.query, s.maxPrice)
+                                else -> Pepper.search("https://www.mydealz.de/rss", SRC_MYDEALZ, s.query, s.maxPrice)
                             }
                         }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
                         val items = raw.filter { !Store.isBlocked(it) && matches(s, it) }
@@ -80,7 +82,7 @@ object Checker {
                         for (it in fresh) {
                             if (isJunk(it.title)) continue
                             val reason = when {
-                                src == SRC_CHOLLOMETRO -> "Chollo de la comunidad"
+                                isDealSite(src) -> "Chollo de la comunidad"
                                 it.price < 1.0 -> null
                                 s.maxPrice != null && it.price <= s.maxPrice -> "Por debajo de tu máximo (${fmt(s.maxPrice)})"
                                 med != null && it.price <= med * (1 - s.minDiscount / 100.0) ->
@@ -92,7 +94,7 @@ object Checker {
                                 else newDeals += Deal(it, s.id, s.query, reason, System.currentTimeMillis())
                             }
                         }
-                        if (src != SRC_CHOLLOMETRO) {
+                        if (!isDealSite(src)) {
                             // Bajadas de precio en anuncios que ya conocíamos
                             val pm = Store.priceMap(key)
                             if (!firstRun) for (it in items) {

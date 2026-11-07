@@ -198,39 +198,52 @@ object Vinted {
     }
 }
 
-object Chollometro {
-    private val priceRx = Regex("""(\d+(?:[.,]\d{1,2})?)\s*€""")
+object Pepper {
+    private val priceRx = Regex("""(\d[\d .]*(?:[.,]\d{1,2})?)\s*€""")
+    private val tagRx = Regex("<[^>]+>")
 
-    /** Chollos publicados por la comunidad cuyo título contiene todas las palabras de la búsqueda. */
-    fun search(q: String, maxPrice: Double?): List<Item> {
-        val r = http("https://www.chollometro.com/rss", mapOf("Accept" to "application/rss+xml"))
-        if (r.code != 200) error("Chollometro HTTP ${r.code}")
+    private fun parsePrice(s: String?): Double {
+        if (s.isNullOrBlank()) return 0.0
+        val m = priceRx.find(s) ?: return 0.0
+        return m.groupValues[1].replace(" ", "").replace(".", "").replace(",", ".").toDoubleOrNull() ?: 0.0
+    }
+
+    /** Chollos publicados por la comunidad cuyo título o descripción contienen todas las palabras de la búsqueda. */
+    fun search(feed: String, source: String, q: String, maxPrice: Double?): List<Item> {
+        val r = http(feed, mapOf("Accept" to "application/rss+xml"))
+        if (r.code != 200) error("${sourceLabel(source)} HTTP ${r.code}")
         val words = q.lowercase().split(' ').filter { it.length > 1 }
         val items = mutableListOf<Item>()
         val p = Xml.newPullParser()
         p.setInput(r.body.reader())
         var inItem = false
         var tag = ""
-        var title = ""; var link = ""; var guid = ""
+        var title = ""; var link = ""; var guid = ""; var desc = ""
+        var merchantPrice = ""; var thumb: String? = null
         var ev = p.eventType
         while (ev != XmlPullParser.END_DOCUMENT) {
             when (ev) {
                 XmlPullParser.START_TAG -> {
                     tag = p.name
-                    if (tag == "item") { inItem = true; title = ""; link = ""; guid = "" }
+                    if (tag == "item") { inItem = true; title = ""; link = ""; guid = ""; desc = ""; merchantPrice = ""; thumb = null }
+                    else if (inItem && tag == "pepper:merchant") merchantPrice = p.getAttributeValue(null, "price") ?: ""
+                    else if (inItem && (tag == "media:thumbnail" || tag == "media:content") && thumb == null) thumb = p.getAttributeValue(null, "url")
                 }
                 XmlPullParser.TEXT, XmlPullParser.CDSECT -> if (inItem) when (tag) {
                     "title" -> title += p.text
                     "link" -> link += p.text.trim()
                     "guid" -> guid += p.text.trim()
+                    "description" -> desc += p.text
                 }
                 XmlPullParser.END_TAG -> {
                     if (p.name == "item") {
                         inItem = false
                         val t = title.trim()
-                        val price = priceRx.find(t)?.groupValues?.get(1)?.replace(",", ".")?.toDoubleOrNull() ?: 0.0
-                        val ok = words.all { t.lowercase().contains(it) } && (maxPrice == null || price == 0.0 || price <= maxPrice)
-                        if (ok && link.isNotBlank()) items += Item(guid.ifBlank { link }, SRC_CHOLLOMETRO, t, price, link)
+                        val body = tagRx.replace(desc, " ").replace("&nbsp;", " ").trim().take(600)
+                        val price = parsePrice(merchantPrice).takeIf { it > 0 } ?: parsePrice(t).takeIf { it > 0 } ?: parsePrice(body)
+                        val hay = (t + " " + body).lowercase()
+                        val ok = words.all { hay.contains(it) } && (maxPrice == null || price == 0.0 || price <= maxPrice)
+                        if (ok && link.isNotBlank()) items += Item(guid.ifBlank { link }, source, t, price, link, thumb, body)
                     }
                     tag = ""
                 }

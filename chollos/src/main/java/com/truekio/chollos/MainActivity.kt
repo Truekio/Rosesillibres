@@ -351,7 +351,7 @@ private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search
     var disc by remember { mutableStateOf((initial?.minDiscount ?: 30).toString()) }
     var inc by remember { mutableStateOf(initial?.include?.joinToString(", ") ?: "") }
     var exc by remember { mutableStateOf(initial?.exclude?.joinToString(", ") ?: "") }
-    var sources by remember { mutableStateOf(initial?.sources ?: ALL_SOURCES.toSet()) }
+    var sources by remember { mutableStateOf(initial?.sources ?: DEFAULT_SOURCES) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Nueva búsqueda" else "Editar búsqueda") },

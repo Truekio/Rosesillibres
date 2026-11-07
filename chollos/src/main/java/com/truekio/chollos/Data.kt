@@ -10,12 +10,21 @@ const val SRC_WALLAPOP = "WALLAPOP"
 const val SRC_VINTED = "VINTED"
 const val SRC_CHOLLOMETRO = "CHOLLOMETRO"
 
-val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
+const val SRC_DEALABS = "DEALABS"
+const val SRC_MYDEALZ = "MYDEALZ"
+
+val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ)
+val DEFAULT_SOURCES = setOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
+
+/** Webs de chollos de la comunidad (formato RSS de Pepper): no hay mediana de precios, cada oferta ya es un chollo. */
+fun isDealSite(s: String) = s == SRC_CHOLLOMETRO || s == SRC_DEALABS || s == SRC_MYDEALZ
 
 fun sourceLabel(s: String) = when (s) {
     SRC_WALLAPOP -> "Wallapop"
     SRC_VINTED -> "Vinted"
     SRC_CHOLLOMETRO -> "Chollometro"
+    SRC_DEALABS -> "Dealabs (FR)"
+    SRC_MYDEALZ -> "Mydealz (DE)"
     else -> s
 }
 
@@ -255,7 +264,7 @@ object Store {
                 id = o.getString("id"), query = o.getString("q"),
                 maxPrice = if (o.isNull("max")) null else o.getDouble("max"),
                 minDiscount = o.optInt("disc", 30),
-                sources = if (src == null) ALL_SOURCES.toSet() else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
+                sources = if (src == null) DEFAULT_SOURCES else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
                 include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc"))
             )
         }
