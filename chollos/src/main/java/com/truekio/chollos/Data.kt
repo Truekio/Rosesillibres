@@ -38,7 +38,8 @@ data class Search(
     val minDiscount: Int,
     val sources: Set<String>,
     val include: List<String> = emptyList(),
-    val exclude: List<String> = emptyList()
+    val exclude: List<String> = emptyList(),
+    val vintedUrl: String = ""
 )
 
 /** Un anuncio encontrado. price = 0 si no se conoce. */
@@ -275,7 +276,7 @@ object Store {
             put("max", s.maxPrice ?: JSONObject.NULL)
             put("disc", s.minDiscount)
             put("src", JSONArray(s.sources.toList()))
-            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude))
+            put("inc", JSONArray(s.include)); put("exc", JSONArray(s.exclude)); put("vurl", s.vintedUrl)
         })
         return a.toString()
     }
@@ -290,7 +291,8 @@ object Store {
                 maxPrice = if (o.isNull("max")) null else o.getDouble("max"),
                 minDiscount = o.optInt("disc", 30),
                 sources = if (src == null) DEFAULT_SOURCES else (0 until src.length()).map { i -> src.getString(i) }.toSet(),
-                include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc"))
+                include = strList(o.optJSONArray("inc")), exclude = strList(o.optJSONArray("exc")),
+                vintedUrl = o.optString("vurl")
             )
         }
     }.getOrDefault(emptyList())

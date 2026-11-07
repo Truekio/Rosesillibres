@@ -157,9 +157,44 @@ object Vinted {
 
     private var lastCookieNames = ""
 
-    fun search(q: String, maxPrice: Double?): List<Item> {
-        val url = "$API/svc-catalogue/items?search_text=${enc(q)}&order=newest_first&per_page=40&page=1" +
-            (if (maxPrice != null) "&price_to=${maxPrice.toInt()}" else "")
+    /**
+     * Toma los filtros de un enlace de vinted.es/catalog (categoría, talla, marca, estado, color, material, precio)
+     * y los traduce a los nombres de la API actual (attribute_ids[...]).
+     */
+    private fun filtersFromLink(link: String): Map<String, String> {
+        val q = link.trim().substringAfter('?', "")
+        if (q.isBlank()) return emptyMap()
+        val multi = linkedMapOf<String, MutableList<String>>()
+        for (part in q.split('&')) {
+            if (part.isBlank()) continue
+            val k = runCatching { java.net.URLDecoder.decode(part.substringBefore('='), "UTF-8") }.getOrDefault(part.substringBefore('='))
+            val v = runCatching { java.net.URLDecoder.decode(part.substringAfter('=', ""), "UTF-8") }.getOrDefault("")
+            if (v.isBlank()) continue
+            val key = when (k.removeSuffix("[]")) {
+                "catalog", "catalog_ids" -> "attribute_ids[catalog]"
+                "size_ids" -> "attribute_ids[size]"
+                "brand_ids" -> "attribute_ids[brand]"
+                "color_ids" -> "attribute_ids[color]"
+                "status_ids" -> "attribute_ids[status]"
+                "material_ids" -> "attribute_ids[material]"
+                "video_game_platform_ids" -> "attribute_ids[video_game_platform]"
+                "search_text", "price_from", "price_to", "currency" -> k
+                else -> null
+            } ?: continue
+            multi.getOrPut(key) { mutableListOf() } += v
+        }
+        return multi.mapValues { it.value.joinToString(",") }
+    }
+
+    fun search(q: String, maxPrice: Double?, link: String = ""): List<Item> {
+        val f = filtersFromLink(link).toMutableMap()
+        if (maxPrice != null) {
+            val cur = f["price_to"]?.toDoubleOrNull()
+            f["price_to"] = (if (cur == null || maxPrice < cur) maxPrice else cur).toInt().toString()
+        }
+        val text = f.remove("search_text")?.takeIf { it.isNotBlank() } ?: q
+        val url = "$API/svc-catalogue/items?search_text=${enc(text)}&order=newest_first&per_page=40&page=1" +
+            f.entries.joinToString("") { "&${enc(it.key)}=${enc(it.value)}" }
         var r: Resp? = null
         for (attempt in 0..1) {
             warmUp(force = attempt > 0)
