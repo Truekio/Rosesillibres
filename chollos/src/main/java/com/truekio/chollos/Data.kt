@@ -67,6 +67,7 @@ object Store {
 
     val searches = MutableStateFlow<List<Search>>(emptyList())
     val deals = MutableStateFlow<List<Deal>>(emptyList())
+    val saved = MutableStateFlow<List<Deal>>(emptyList())
     val intervalMin = MutableStateFlow(15)
     val place = MutableStateFlow(PLACES[0])
     val radiusKm = MutableStateFlow(0) // 0 = sin límite
@@ -80,6 +81,7 @@ object Store {
         prefs = ctx.applicationContext.getSharedPreferences("chollos", Context.MODE_PRIVATE)
         searches.value = readSearches(prefs.getString("searches", "[]") ?: "[]")
         deals.value = readDeals(prefs.getString("deals", "[]") ?: "[]")
+        saved.value = readDeals(prefs.getString("saved", "[]") ?: "[]")
         intervalMin.value = prefs.getInt("interval", 15).coerceAtLeast(15)
         place.value = PLACES.firstOrNull { it.name == prefs.getString("place", "") } ?: PLACES[0]
         radiusKm.value = prefs.getInt("radius", 0)
@@ -113,6 +115,25 @@ object Store {
         val all = (new + deals.value).distinctBy { it.item.source + it.item.id }.take(200)
         deals.value = all
         prefs.edit().putString("deals", writeDeals(all)).apply()
+    }
+
+    private fun same(a: Deal, b: Deal) = a.item.source == b.item.source && a.item.id == b.item.id
+
+    fun save(d: Deal) {
+        if (saved.value.any { same(it, d) }) return
+        saved.value = listOf(d) + saved.value
+        prefs.edit().putString("saved", writeDeals(saved.value)).apply()
+    }
+
+    fun unsave(d: Deal) {
+        saved.value = saved.value.filter { !same(it, d) }
+        prefs.edit().putString("saved", writeDeals(saved.value)).apply()
+    }
+
+    /** Quita un chollo de la lista (no volverá a salir: su id ya está memorizado). */
+    fun dismiss(d: Deal) {
+        deals.value = deals.value.filter { !same(it, d) }
+        prefs.edit().putString("deals", writeDeals(deals.value)).apply()
     }
 
     fun clearDeals() {

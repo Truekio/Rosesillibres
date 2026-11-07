@@ -94,14 +94,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Root() {
     var tab by remember { mutableStateOf(0) }
-    val titles = listOf("Chollos", "Búsquedas", "Ajustes")
+    val titles = listOf("Chollos", "Guardados", "Búsquedas", "Ajustes")
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         TabRow(selectedTabIndex = tab) {
             titles.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
         }
         when (tab) {
             0 -> DealsScreen()
-            1 -> SearchesScreen()
+            1 -> SavedScreen()
+            2 -> SearchesScreen()
             else -> SettingsScreen()
         }
     }
@@ -111,6 +112,7 @@ private fun Root() {
 private fun DealsScreen() {
     val ctx = LocalContext.current
     val deals by Store.deals.collectAsState()
+    val savedList by Store.saved.collectAsState()
     val loading by Store.loading.collectAsState()
     val scope = rememberCoroutineScope()
     val df = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
@@ -132,20 +134,50 @@ private fun DealsScreen() {
             LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(deals, key = { it.item.source + it.item.id }) { d ->
-                    Card(Modifier.fillMaxWidth().clickable {
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(d.item.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(sourceLabel(d.item.source), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                Text("  ·  " + df.format(Date(d.time)), fontSize = 12.sp)
-                            }
-                            Text(d.item.title, Modifier.padding(top = 4.dp), fontWeight = FontWeight.Medium)
-                            if (d.item.price > 0) Text(Checker.fmt(d.item.price), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Text(d.reason + " · " + d.searchName, fontSize = 12.sp)
-                        }
-                    }
+                    DealCard(d, df, isSaved = savedList.any { it.item.source == d.item.source && it.item.id == d.item.id },
+                        onSave = { Store.save(d) }, onRemove = { Store.dismiss(d) }, removeLabel = "✕ Descartar")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedScreen() {
+    val saved by Store.saved.collectAsState()
+    val df = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
+    if (saved.isEmpty()) {
+        Text("Aquí aparecen los chollos que guardes con ★.", Modifier.padding(24.dp))
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(saved, key = { "s" + it.item.source + it.item.id }) { d ->
+            DealCard(d, df, isSaved = true, onSave = {}, onRemove = { Store.unsave(d) }, removeLabel = "Quitar de guardados")
+        }
+    }
+}
+
+@Composable
+private fun DealCard(d: Deal, df: DateFormat, isSaved: Boolean, onSave: () -> Unit, onRemove: () -> Unit, removeLabel: String) {
+    val ctx = LocalContext.current
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Column(Modifier.fillMaxWidth().clickable {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(d.item.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(sourceLabel(d.item.source), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("  ·  " + df.format(Date(d.time)), fontSize = 12.sp)
+                }
+                Text(d.item.title, Modifier.padding(top = 4.dp), fontWeight = FontWeight.Medium)
+                if (d.item.price > 0) Text(Checker.fmt(d.item.price), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(d.reason + " · " + d.searchName, fontSize = 12.sp)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (isSaved) TextButton(onClick = {}, enabled = false) { Text("★ Guardado") }
+                else TextButton(onClick = onSave) { Text("☆ Guardar") }
+                TextButton(onClick = onRemove) { Text(removeLabel) }
             }
         }
     }
