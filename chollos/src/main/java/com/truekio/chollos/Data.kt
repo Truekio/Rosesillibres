@@ -10,10 +10,11 @@ const val SRC_WALLAPOP = "WALLAPOP"
 const val SRC_VINTED = "VINTED"
 const val SRC_CHOLLOMETRO = "CHOLLOMETRO"
 
+const val SRC_EBAY = "EBAY"
 const val SRC_DEALABS = "DEALABS"
 const val SRC_MYDEALZ = "MYDEALZ"
 
-val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ)
+val ALL_SOURCES = listOf(SRC_WALLAPOP, SRC_VINTED, SRC_EBAY, SRC_CHOLLOMETRO, SRC_DEALABS, SRC_MYDEALZ)
 val DEFAULT_SOURCES = setOf(SRC_WALLAPOP, SRC_VINTED, SRC_CHOLLOMETRO)
 
 /** Webs de chollos de la comunidad (formato RSS de Pepper): no hay mediana de precios, cada oferta ya es un chollo. */
@@ -23,6 +24,7 @@ fun sourceLabel(s: String) = when (s) {
     SRC_WALLAPOP -> "Wallapop"
     SRC_VINTED -> "Vinted"
     SRC_CHOLLOMETRO -> "Chollometro"
+    SRC_EBAY -> "eBay.es"
     SRC_DEALABS -> "Dealabs (FR)"
     SRC_MYDEALZ -> "Mydealz (DE)"
     else -> s

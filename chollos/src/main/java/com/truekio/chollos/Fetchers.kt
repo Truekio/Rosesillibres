@@ -253,3 +253,85 @@ object Pepper {
         return items
     }
 }
+
+/** GET que sigue las redirecciones a mano guardando las cookies de cada salto (Java las pierde). */
+private fun getWithJar(url: String, headers: Map<String, String>, jar: MutableMap<String, String>): Resp {
+    var next = url
+    for (hop in 0..5) {
+        val c = URL(next).openConnection() as HttpURLConnection
+        try {
+            c.instanceFollowRedirects = false
+            c.connectTimeout = 15000; c.readTimeout = 20000
+            c.setRequestProperty("User-Agent", UA)
+            c.setRequestProperty("Accept-Language", "es-ES,es;q=0.9")
+            headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            if (jar.isNotEmpty()) c.setRequestProperty("Cookie", jar.entries.joinToString("; ") { "${it.key}=${it.value}" })
+            val code = c.responseCode
+            c.headerFields.entries.filter { it.key.equals("Set-Cookie", true) }.flatMap { it.value }.forEach {
+                val kv = it.substringBefore(';'); jar[kv.substringBefore('=')] = kv.substringAfter('=')
+            }
+            if (code in 300..399) {
+                val loc = c.getHeaderField("Location") ?: return Resp(code, "", emptyList())
+                next = if (loc.startsWith("http")) loc else URL(URL(next), loc).toString()
+                continue
+            }
+            val stream = if (code in 200..299) c.inputStream else c.errorStream
+            return Resp(code, stream?.bufferedReader()?.use { it.readText() } ?: "", emptyList())
+        } finally {
+            c.disconnect()
+        }
+    }
+    return Resp(310, "", emptyList())
+}
+
+object Ebay {
+    private const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    private val jar = linkedMapOf<String, String>()
+    private var warmAt = 0L
+
+    private val cardSplit = Regex("""(?=<li[^>]*class="[^"]*\bs-(?:card|item)\b)""")
+    private val hrefRx = Regex("""href="(https://www\.ebay\.[a-z.]+/itm/(\d+)[^"]*)"""")
+    private val titleRx = Regex("""class="[^"]*s-(?:card|item)__title[^"]*"[^>]*>(.*?)</(?:div|h3)>""", RegexOption.DOT_MATCHES_ALL)
+    private val priceRx = Regex("""class="[^"]*s-(?:card|item)__price[^"]*"[^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
+    private val subRx = Regex("""class="[^"]*s-(?:card|item)__subtitle[^"]*"[^>]*>(.*?)</(?:div|span)>""", RegexOption.DOT_MATCHES_ALL)
+    private val imgRx = Regex("""<img[^>]+(?:data-src|src)="(https://i\.ebayimg\.com/[^"]+)"""")
+    private val tagRx = Regex("<[^>]+>")
+    private val numRx = Regex("""(\d[\d.]*(?:,\d{1,2})?)""")
+
+    private fun clean(s: String) = tagRx.replace(s, " ").replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
+        .replace("Se abre en una ventana o pestaña nueva", "").replace("NUEVO ANUNCIO", "").replace(Regex("\\s+"), " ").trim()
+
+    private fun price(s: String): Double {
+        val m = numRx.find(s) ?: return 0.0
+        return m.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() ?: 0.0
+    }
+
+    fun search(q: String, maxPrice: Double?): List<Item> {
+        val h = mapOf("User-Agent" to DESKTOP_UA, "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Sec-Fetch-Dest" to "document", "Sec-Fetch-Mode" to "navigate", "Sec-Fetch-Site" to "none", "Upgrade-Insecure-Requests" to "1")
+        if (jar.isEmpty() || System.currentTimeMillis() - warmAt > 20 * 60_000) {
+            jar.clear()
+            getWithJar("https://www.ebay.es/", h, jar)
+            warmAt = System.currentTimeMillis()
+        }
+        // _sop=10: más recientes; LH_BIN=1: solo "Cómpralo ya" (las subastas con puja de 1 € falsearían los chollos)
+        val url = "https://www.ebay.es/sch/i.html?_nkw=${enc(q)}&_sop=10&LH_BIN=1&_ipg=60" +
+            (if (maxPrice != null) "&_udhi=${maxPrice.toInt()}" else "")
+        val r = getWithJar(url, h + ("Referer" to "https://www.ebay.es/"), jar)
+        if (r.code != 200) error("eBay HTTP ${r.code}")
+        val lower = r.body.lowercase()
+        if ("captcha" in lower || "pardon our interruption" in lower || "verifying you are human" in lower) error("eBay pide verificación (anti-bot)")
+        val items = mutableListOf<Item>()
+        for (chunk in cardSplit.split(r.body)) {
+            val m = hrefRx.find(chunk) ?: continue
+            val id = m.groupValues[2]
+            val title = titleRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: continue
+            if (title.isBlank() || title.startsWith("Shop on eBay", true) || title.startsWith("Resultados", true)) continue
+            val pr = priceRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: ""
+            val sub = subRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: ""
+            items += Item(id, SRC_EBAY, title, price(pr), m.groupValues[1].substringBefore('?'), imgRx.find(chunk)?.groupValues?.get(1), sub)
+        }
+        if (items.isEmpty()) error("eBay: 0 anuncios leídos (${r.body.length} bytes): bloqueo o diseño nuevo")
+        return items.distinctBy { it.id }
+    }
+}
