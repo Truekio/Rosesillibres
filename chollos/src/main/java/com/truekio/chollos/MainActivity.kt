@@ -151,6 +151,8 @@ private fun DealsScreen() {
 
 @Composable
 private fun SearchesScreen() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val searches by Store.searches.collectAsState()
     var adding by remember { mutableStateOf(false) }
     Scaffold(floatingActionButton = {
@@ -183,6 +185,7 @@ private fun SearchesScreen() {
     if (adding) AddSearchDialog(onDismiss = { adding = false }) { s ->
         Store.setSearches(Store.searches.value + s)
         adding = false
+        scope.launch { Checker.run(ctx) }
     }
 }
 
@@ -248,6 +251,6 @@ private fun SettingsScreen() {
         }
         Button(onClick = { Store.clearDeals() }) { Text("Borrar lista de chollos") }
         Text("Última revisión: " + (if (lastRun == 0L) "nunca" else df.format(Date(lastRun))))
-        if (status.isNotBlank()) Text(status, fontSize = 12.sp)
+        if (status.isNotBlank()) Text(status, fontSize = 13.sp)
     }
 }

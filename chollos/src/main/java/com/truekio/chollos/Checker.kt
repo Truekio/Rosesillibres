@@ -53,6 +53,8 @@ object Checker {
         try {
             Store.loading.value = true
             val newDeals = mutableListOf<Deal>()
+            val silent = mutableListOf<Deal>()
+            val report = mutableListOf<String>()
             withContext(Dispatchers.IO) {
                 for (s in Store.searches.value) {
                     for (src in s.sources) {
@@ -73,7 +75,9 @@ object Checker {
                         // Con la historia de precios ANTES de añadir los nuevos, para no sesgar la mediana.
                         val med = if (prices.size >= 8) median(prices) else null
 
-                        if (!firstRun) for (it in fresh) {
+                        val matched = items.size
+                        report += "${sourceLabel(src)} \"${s.query}\": ${matched} anuncios" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
+                        for (it in fresh) {
                             if (isJunk(it.title)) continue
                             val reason = when {
                                 src == SRC_CHOLLOMETRO -> "Chollo de la comunidad"
@@ -83,7 +87,10 @@ object Checker {
                                     "${((1 - it.price / med) * 100).toInt()}% por debajo de la mediana (${fmt(med)})"
                                 else -> null
                             }
-                            if (reason != null) newDeals += Deal(it, s.id, s.query, reason, System.currentTimeMillis())
+                            if (reason != null) {
+                                if (firstRun) silent += Deal(it, s.id, s.query, "Ya publicado · $reason", System.currentTimeMillis())
+                                else newDeals += Deal(it, s.id, s.query, reason, System.currentTimeMillis())
+                            }
                         }
                         if (src != SRC_CHOLLOMETRO) {
                             fresh.filter { it.price >= 1.0 && !isJunk(it.title) }.forEach { prices += it.price }
@@ -95,9 +102,10 @@ object Checker {
                 }
             }
             found = newDeals.size
-            Store.addDeals(newDeals)
+            Store.addDeals(silent + newDeals)
             newDeals.forEach { notify(ctx, it) }
-            val status = if (errors.isEmpty()) "OK · $found chollos nuevos" else "$found nuevos · " + errors.distinct().joinToString(" | ")
+            val status = ("$found chollos nuevos\n" + report.joinToString("\n") +
+                (if (errors.isEmpty()) "" else "\nERRORES: " + errors.distinct().joinToString(" | "))).trim()
             Store.setStatus(System.currentTimeMillis(), status)
         } finally {
             Store.loading.value = false

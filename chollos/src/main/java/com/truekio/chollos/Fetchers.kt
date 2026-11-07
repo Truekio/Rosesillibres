@@ -45,16 +45,26 @@ object Wallapop {
     private const val LAT = "40.4168"
     private const val LON = "-3.7038"
 
+    private const val IOS_UA = "Wallapop/1.0 (iPhone; iOS 17.4; Scale/3.00)"
+
     fun search(q: String, maxPrice: Double?): List<Item> {
-        var url = "https://api.wallapop.com/api/v3/search?keywords=${enc(q)}&order_by=newest" +
-            "&source=search_box&latitude=$LAT&longitude=$LON&language=es_ES"
-        // Pedimos hasta un margen por encima del máximo; el filtro real lo hace el analizador.
-        if (maxPrice != null) url += "&max_sale_price=${maxPrice.toInt()}"
-        val r = http(url, mapOf("Accept" to "application/json", "X-DeviceOS" to "0"))
-        if (r.code != 200) error("Wallapop HTTP ${r.code}")
-        val root = JSONObject(r.body)
-        val arr: JSONArray = root.optJSONObject("data")?.optJSONObject("section")?.optJSONObject("payload")?.optJSONArray("items")
-            ?: root.optJSONArray("search_objects")
+        val qs = "keywords=${enc(q)}&order_by=newest&source=search_box&latitude=$LAT&longitude=$LON&language=es_ES" +
+            (if (maxPrice != null) "&max_sale_price=${maxPrice.toInt()}" else "")
+        val hdr = mapOf("Accept" to "application/json", "X-DeviceOS" to "0", "User-Agent" to IOS_UA)
+        val codes = mutableListOf<String>()
+        for (path in listOf("general/search", "search")) {
+            val r = runCatching { http("https://api.wallapop.com/api/v3/$path?$qs", hdr) }.getOrNull()
+            if (r == null) { codes += "red"; continue }
+            if (r.code != 200) { codes += r.code.toString(); continue }
+            return parse(r.body)
+        }
+        error("sin acceso (${codes.joinToString("/")})")
+    }
+
+    private fun parse(body: String): List<Item> {
+        val root = JSONObject(body)
+        val arr: JSONArray = root.optJSONArray("search_objects")
+            ?: root.optJSONObject("data")?.optJSONObject("section")?.optJSONObject("payload")?.optJSONArray("items")
             ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
