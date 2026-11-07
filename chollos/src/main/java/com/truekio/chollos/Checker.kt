@@ -87,7 +87,7 @@ object Checker {
                         val med = if (prices.size >= 8) median(prices) else null
 
                         val matched = items.size
-                        report += "${sourceLabel(src)} \"${s.query}\": ${raw.size} anuncios, ${matched} con tus filtros" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
+                        report += "${sourceLabel(src)} \"${s.query}\": ${raw.size} anuncios${if (isDealSite(src)) " (feed de ${Pepper.lastTotal})" else ""}, ${matched} con tus filtros" + if (firstRun) " (memorizados)" else ", ${fresh.size} nuevos"
                         for (it in fresh) {
                             if (isJunk(it.title)) continue
                             val reason = when {

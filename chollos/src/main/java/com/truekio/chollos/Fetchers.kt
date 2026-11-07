@@ -202,6 +202,9 @@ object Pepper {
     private val priceRx = Regex("""(\d[\d .]*(?:[.,]\d{1,2})?)\s*€""")
     private val tagRx = Regex("<[^>]+>")
 
+    /** Ofertas totales que traía el último feed leído (para el estado). */
+    @Volatile var lastTotal = 0
+
     private fun parsePrice(s: String?): Double {
         if (s.isNullOrBlank()) return 0.0
         val m = priceRx.find(s) ?: return 0.0
@@ -220,12 +223,13 @@ object Pepper {
         var tag = ""
         var title = ""; var link = ""; var guid = ""; var desc = ""
         var merchantPrice = ""; var thumb: String? = null
+        var total = 0
         var ev = p.eventType
         while (ev != XmlPullParser.END_DOCUMENT) {
             when (ev) {
                 XmlPullParser.START_TAG -> {
                     tag = p.name
-                    if (tag == "item") { inItem = true; title = ""; link = ""; guid = ""; desc = ""; merchantPrice = ""; thumb = null }
+                    if (tag == "item") { inItem = true; total++; title = ""; link = ""; guid = ""; desc = ""; merchantPrice = ""; thumb = null }
                     else if (inItem && tag == "pepper:merchant") merchantPrice = p.getAttributeValue(null, "price") ?: ""
                     else if (inItem && (tag == "media:thumbnail" || tag == "media:content") && thumb == null) thumb = p.getAttributeValue(null, "url")
                 }
@@ -250,6 +254,7 @@ object Pepper {
             }
             ev = p.next()
         }
+        lastTotal = total
         return items
     }
 }
@@ -306,19 +311,54 @@ object Ebay {
         return m.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() ?: 0.0
     }
 
+    private var lastCall = 0L
+    private val anchorRx = Regex("""<a[^>]+href="(https://www\.ebay\.[a-z.]+/itm/(\d+)[^"]*)"[^>]*>""")
+    private val altRx = Regex("""alt="([^"]{6,200})"""")
+    private val eurRx = Regex("""(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:EUR|€)""")
+
+    private fun diag(body: String): String {
+        val i = body.indexOf("/itm/")
+        val around = if (i >= 0) body.substring(maxOf(0, i - 120), minOf(body.length, i + 160)).replace(Regex("\\s+"), " ") else "sin /itm/"
+        return "s-card=${Regex("s-card").findAll(body).count()}, s-item=${Regex("s-item").findAll(body).count()}, itm=${Regex("/itm/").findAll(body).count()}, muestra: $around"
+    }
+
+    /** Plan B si cambian las clases: busca cada enlace /itm/ y toma título (foto/alt) y precio de lo que lo rodea. */
+    private fun fallback(body: String): List<Item> {
+        val out = linkedMapOf<String, Item>()
+        for (m in anchorRx.findAll(body)) {
+            val id = m.groupValues[2]
+            if (id in out) continue
+            val win = body.substring(maxOf(0, m.range.first - 300), minOf(body.length, m.range.last + 2500))
+            val title = altRx.find(win)?.groupValues?.get(1)?.let { clean(it) }
+                ?: clean(win.substring(win.indexOf('>', m.range.first - maxOf(0, m.range.first - 300)).coerceAtLeast(0)).take(300)).take(120)
+            val pr = eurRx.find(win)?.groupValues?.get(1)?.let { price(it) } ?: 0.0
+            if (pr > 0 && title.length > 5) out[id] = Item(id, SRC_EBAY, title, pr, m.groupValues[1].substringBefore('?'), imgRx.find(win)?.groupValues?.get(1), "")
+        }
+        return out.values.toList()
+    }
+
     fun search(q: String, maxPrice: Double?): List<Item> {
         val h = mapOf("User-Agent" to DESKTOP_UA, "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Sec-Fetch-Dest" to "document", "Sec-Fetch-Mode" to "navigate", "Sec-Fetch-Site" to "none", "Upgrade-Insecure-Requests" to "1")
-        if (jar.isEmpty() || System.currentTimeMillis() - warmAt > 20 * 60_000) {
-            jar.clear()
-            getWithJar("https://www.ebay.es/", h, jar)
-            warmAt = System.currentTimeMillis()
-        }
         // _sop=10: más recientes; LH_BIN=1: solo "Cómpralo ya" (las subastas con puja de 1 € falsearían los chollos)
         val url = "https://www.ebay.es/sch/i.html?_nkw=${enc(q)}&_sop=10&LH_BIN=1&_ipg=60" +
             (if (maxPrice != null) "&_udhi=${maxPrice.toInt()}" else "")
-        val r = getWithJar(url, h + ("Referer" to "https://www.ebay.es/"), jar)
-        if (r.code != 200) error("eBay HTTP ${r.code}")
+        var r: Resp? = null
+        for (attempt in 0..1) {
+            // eBay bloquea el ritmo rápido: separamos las peticiones al menos 8 s
+            val wait = 8000 - (System.currentTimeMillis() - lastCall)
+            if (wait > 0) Thread.sleep(wait)
+            if (jar.isEmpty() || attempt > 0 || System.currentTimeMillis() - warmAt > 20 * 60_000) {
+                jar.clear()
+                getWithJar("https://www.ebay.es/", h, jar)
+                warmAt = System.currentTimeMillis()
+                Thread.sleep(2500)
+            }
+            r = getWithJar(url, h + ("Referer" to "https://www.ebay.es/"), jar)
+            lastCall = System.currentTimeMillis()
+            if (r.code != 403 && r.code != 429) break
+        }
+        if (r == null || r.code != 200) error("eBay HTTP ${r?.code} (bloqueo temporal)")
         val lower = r.body.lowercase()
         if ("captcha" in lower || "pardon our interruption" in lower || "verifying you are human" in lower) error("eBay pide verificación (anti-bot)")
         val items = mutableListOf<Item>()
@@ -331,7 +371,8 @@ object Ebay {
             val sub = subRx.find(chunk)?.groupValues?.get(1)?.let { clean(it) } ?: ""
             items += Item(id, SRC_EBAY, title, price(pr), m.groupValues[1].substringBefore('?'), imgRx.find(chunk)?.groupValues?.get(1), sub)
         }
-        if (items.isEmpty()) error("eBay: 0 anuncios leídos (${r.body.length} bytes): bloqueo o diseño nuevo")
+        if (items.isEmpty()) items += fallback(r.body)
+        if (items.isEmpty()) error("eBay: 0 anuncios leídos (${r.body.length} bytes). ${diag(r.body)}".take(700))
         return items.distinctBy { it.id }
     }
 }
