@@ -14,7 +14,20 @@ private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
 private data class Resp(val code: Int, val body: String, val cookies: List<String>)
 
+/** Si el DNS del móvil falla a ratos, se reintenta un par de veces con pausa. */
 private fun http(url: String, headers: Map<String, String> = emptyMap()): Resp {
+    var attempt = 0
+    while (true) {
+        try {
+            return httpOnce(url, headers)
+        } catch (e: java.net.UnknownHostException) {
+            if (++attempt > 2) throw e
+            Thread.sleep(3000L * attempt)
+        }
+    }
+}
+
+private fun httpOnce(url: String, headers: Map<String, String> = emptyMap()): Resp {
     val c = URL(url).openConnection() as HttpURLConnection
     try {
         c.connectTimeout = 15000
