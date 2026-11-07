@@ -291,6 +291,7 @@ private fun SearchesScreen() {
     val scope = rememberCoroutineScope()
     val searches by Store.searches.collectAsState()
     var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Search?>(null) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Header("Búsquedas", if (searches.isEmpty()) "" else "${searches.size} activas")
@@ -299,7 +300,7 @@ private fun SearchesScreen() {
             } else {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(searches, key = { it.id }) { s ->
-                        Card(Modifier.fillMaxWidth()) {
+                        Card(Modifier.fillMaxWidth().clickable { editing = s }) {
                             Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(s.query, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -307,7 +308,7 @@ private fun SearchesScreen() {
                                     Text("$max · -${s.minDiscount}% vs mediana", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.include.isNotEmpty()) Text("Incluye: " + s.include.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (s.exclude.isNotEmpty()) Text("Excluye: " + s.exclude.joinToString(", "), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(s.sources.joinToString(" · ") { sourceLabel(it) }, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                    Text(s.sources.joinToString(" · ") { sourceLabel(it) } + "  ·  toca para editar", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = {
                                     Store.forget(s.id)
@@ -327,24 +328,33 @@ private fun SearchesScreen() {
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
         )
     }
-    if (adding) AddSearchDialog(onDismiss = { adding = false }) { s ->
+    if (adding) SearchDialog(null, onDismiss = { adding = false }) { s ->
         Store.setSearches(Store.searches.value + s)
         adding = false
         scope.launch { Checker.run(ctx) }
     }
+    editing?.let { old ->
+        SearchDialog(old, onDismiss = { editing = null }) { s ->
+            // Si cambia algo, se empieza de cero para que los anuncios que ahora encajan no salgan como nuevos.
+            if (s != old) Store.forget(old.id)
+            Store.setSearches(Store.searches.value.map { if (it.id == old.id) s else it })
+            editing = null
+            if (s != old) scope.launch { Checker.run(ctx) }
+        }
+    }
 }
 
 @Composable
-private fun AddSearchDialog(onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
-    var query by remember { mutableStateOf("") }
-    var max by remember { mutableStateOf("") }
-    var disc by remember { mutableStateOf("30") }
-    var inc by remember { mutableStateOf("") }
-    var exc by remember { mutableStateOf("") }
-    var sources by remember { mutableStateOf(ALL_SOURCES.toSet()) }
+private fun SearchDialog(initial: Search?, onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
+    var query by remember { mutableStateOf(initial?.query ?: "") }
+    var max by remember { mutableStateOf(initial?.maxPrice?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var disc by remember { mutableStateOf((initial?.minDiscount ?: 30).toString()) }
+    var inc by remember { mutableStateOf(initial?.include?.joinToString(", ") ?: "") }
+    var exc by remember { mutableStateOf(initial?.exclude?.joinToString(", ") ?: "") }
+    var sources by remember { mutableStateOf(initial?.sources ?: ALL_SOURCES.toSet()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Nueva búsqueda") },
+        title = { Text(if (initial == null) "Nueva búsqueda" else "Editar búsqueda") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(query, { query = it }, label = { Text("Producto, corto (ej. zapatillas on)") }, singleLine = true)
@@ -364,9 +374,9 @@ private fun AddSearchDialog(onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
         },
         confirmButton = {
             TextButton(enabled = query.isNotBlank() && sources.isNotEmpty(), onClick = {
-                onAdd(Search(UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
+                onAdd(Search(initial?.id ?: UUID.randomUUID().toString().take(8), query.trim(), max.replace(",", ".").toDoubleOrNull(),
                     (disc.toIntOrNull() ?: 30).coerceIn(5, 90), sources, words(inc), words(exc)))
-            }) { Text("Añadir") }
+            }) { Text(if (initial == null) "Añadir" else "Guardar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
