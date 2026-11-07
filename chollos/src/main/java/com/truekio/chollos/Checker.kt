@@ -66,7 +66,7 @@ object Checker {
                                 else -> Chollometro.search(s.query, s.maxPrice)
                             }
                         }.getOrElse { errors += "${sourceLabel(src)}: ${it.message}"; null } ?: continue
-                        val items = raw.filter { matches(s, it) }
+                        val items = raw.filter { !Store.isBlocked(it) && matches(s, it) }
 
                         val firstRun = !Store.hasSeen(key)
                         val seen = Store.seenIds(key)
@@ -93,6 +93,17 @@ object Checker {
                             }
                         }
                         if (src != SRC_CHOLLOMETRO) {
+                            // Bajadas de precio en anuncios que ya conocíamos
+                            val pm = Store.priceMap(key)
+                            if (!firstRun) for (it in items) {
+                                val old = pm[it.id] ?: continue
+                                if (it.id in seen && it.price >= 1.0 && it.price <= old * 0.85 && !isJunk(it.title) &&
+                                    (s.maxPrice == null || it.price <= s.maxPrice)) {
+                                    newDeals += Deal(it, s.id, s.query, "Bajó de ${fmt(old)} a ${fmt(it.price)}", System.currentTimeMillis())
+                                }
+                            }
+                            for (it in items) if (it.price >= 1.0) pm[it.id] = it.price
+                            Store.savePriceMap(key, pm)
                             fresh.filter { it.price >= 1.0 && !isJunk(it.title) }.forEach { prices += it.price }
                             Store.savePrices(key, prices)
                         }

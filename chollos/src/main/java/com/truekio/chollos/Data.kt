@@ -38,7 +38,11 @@ data class Item(
     val price: Double,
     val url: String,
     val image: String? = null,
-    val text: String = ""
+    val text: String = "",
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val ship: Boolean? = null,
+    val seller: String = ""
 )
 
 data class Deal(
@@ -71,6 +75,8 @@ object Store {
     val intervalMin = MutableStateFlow(15)
     val place = MutableStateFlow(PLACES[0])
     val radiusKm = MutableStateFlow(0) // 0 = sin límite
+    val orShip = MutableStateFlow(true) // con radio: aceptar también anuncios con envío
+    val blocked = MutableStateFlow<Set<String>>(emptySet()) // "FUENTE:vendedor"
     val loading = MutableStateFlow(false)
     val lastRun = MutableStateFlow(0L)
     val lastStatus = MutableStateFlow("")
@@ -85,6 +91,8 @@ object Store {
         intervalMin.value = prefs.getInt("interval", 15).coerceAtLeast(15)
         place.value = PLACES.firstOrNull { it.name == prefs.getString("place", "") } ?: PLACES[0]
         radiusKm.value = prefs.getInt("radius", 0)
+        orShip.value = prefs.getBoolean("orship", true)
+        blocked.value = readStrings(prefs.getString("blocked", null)).toSet()
         lastRun.value = prefs.getLong("lastRun", 0L)
         lastStatus.value = prefs.getString("lastStatus", "") ?: ""
         ready = true
@@ -103,6 +111,41 @@ object Store {
     fun setPlace(p: Place) {
         place.value = p
         prefs.edit().putString("place", p.name).apply()
+    }
+
+    fun setOrShip(v: Boolean) {
+        orShip.value = v
+        prefs.edit().putBoolean("orship", v).apply()
+    }
+
+    fun blockSeller(it: Item) {
+        if (it.seller.isBlank()) return
+        blocked.value = blocked.value + "${it.source}:${it.seller}"
+        prefs.edit().putString("blocked", JSONArray(blocked.value.toList()).toString()).apply()
+    }
+
+    fun isBlocked(it: Item) = it.seller.isNotBlank() && "${it.source}:${it.seller}" in blocked.value
+
+    fun clearBlocked() {
+        blocked.value = emptySet()
+        prefs.edit().remove("blocked").apply()
+    }
+
+    /** id -> último precio visto, para detectar bajadas. */
+    fun priceMap(key: String): MutableMap<String, Double> {
+        val raw = prefs.getString("pm_$key", null) ?: return linkedMapOf()
+        return runCatching {
+            val o = JSONObject(raw)
+            val m = linkedMapOf<String, Double>()
+            o.keys().forEach { k -> m[k] = o.getDouble(k) }
+            m
+        }.getOrDefault(linkedMapOf())
+    }
+
+    fun savePriceMap(key: String, m: Map<String, Double>) {
+        val o = JSONObject()
+        m.entries.toList().takeLast(400).forEach { o.put(it.key, it.value) }
+        prefs.edit().putString("pm_$key", o.toString()).apply()
     }
 
     fun setRadius(km: Int) {
@@ -177,6 +220,7 @@ object Store {
         for (s in ALL_SOURCES) {
             e.remove("seen_${searchId}_$s")
             e.remove("prices_${searchId}_$s")
+            e.remove("pm_${searchId}_$s")
         }
         e.apply()
     }
@@ -223,6 +267,7 @@ object Store {
         for (d in list) a.put(JSONObject().apply {
             put("id", d.item.id); put("source", d.item.source); put("title", d.item.title)
             put("price", d.item.price); put("url", d.item.url); put("image", d.item.image ?: JSONObject.NULL)
+            put("seller", d.item.seller)
             put("sid", d.searchId); put("sname", d.searchName); put("reason", d.reason); put("time", d.time)
         })
         return a.toString()
@@ -235,7 +280,8 @@ object Store {
             Deal(
                 Item(
                     o.getString("id"), o.getString("source"), o.getString("title"), o.optDouble("price", 0.0),
-                    o.getString("url"), if (o.isNull("image")) null else o.optString("image")
+                    o.getString("url"), if (o.isNull("image")) null else o.optString("image"),
+                    seller = o.optString("seller")
                 ),
                 o.optString("sid"), o.optString("sname"), o.optString("reason"), o.optLong("time")
             )

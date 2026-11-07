@@ -52,16 +52,29 @@ object Wallapop {
         val km = Store.radiusKm.value
         val qs = "keywords=${enc(q)}&order_by=newest&source=search_box&latitude=${p.lat}&longitude=${p.lon}&language=es_ES" +
             (if (maxPrice != null) "&max_sale_price=${maxPrice.toInt()}" else "") +
-            (if (km > 0) "&distance_in_km=$km" else "")
+            (if (km > 0 && !Store.orShip.value) "&distance_in_km=$km" else "")
         val hdr = mapOf("Accept" to "application/json", "X-DeviceOS" to "0", "User-Agent" to IOS_UA)
         val codes = mutableListOf<String>()
         for (path in listOf("general/search", "search")) {
             val r = runCatching { http("https://api.wallapop.com/api/v3/$path?$qs", hdr) }.getOrNull()
             if (r == null) { codes += "red"; continue }
             if (r.code != 200) { codes += r.code.toString(); continue }
-            return parse(r.body)
+            val all = parse(r.body)
+            // "Cerca o con envío": pedimos todo y filtramos aquí por distancia real o envío disponible.
+            return if (km > 0 && Store.orShip.value) all.filter { near(it, p, km) } else all
         }
         error("sin acceso (${codes.joinToString("/")})")
+    }
+
+    private fun near(i: Item, p: Place, km: Int): Boolean {
+        if (i.ship == true) return true
+        val la = i.lat ?: return true // sin datos: no lo descartamos
+        val lo = i.lon ?: return true
+        val r = 6371.0
+        val dLa = Math.toRadians(la - p.lat); val dLo = Math.toRadians(lo - p.lon)
+        val a = Math.sin(dLa / 2).let { it * it } +
+            Math.cos(Math.toRadians(p.lat)) * Math.cos(Math.toRadians(la)) * Math.sin(dLo / 2).let { it * it }
+        return 2 * r * Math.asin(Math.sqrt(a)) <= km
     }
 
     private fun parse(body: String): List<Item> {
@@ -76,7 +89,14 @@ object Wallapop {
             val img = o.optJSONArray("images")?.optJSONObject(0)?.let { im ->
                 im.optJSONObject("urls")?.optString("small")?.ifBlank { null } ?: im.optString("small").ifBlank { null }
             }
-            Item(id, SRC_WALLAPOP, o.optString("title"), priceOf(o.opt("price")), "https://es.wallapop.com/item/$slug", img, o.optString("description"))
+            val loc = o.optJSONObject("location")
+            val sh = o.optJSONObject("shipping")
+            val ship = sh?.let { if (it.has("item_is_shippable")) it.optBoolean("item_is_shippable") else if (it.has("user_allows_shipping")) it.optBoolean("user_allows_shipping") else null }
+            Item(
+                id, SRC_WALLAPOP, o.optString("title"), priceOf(o.opt("price")), "https://es.wallapop.com/item/$slug", img, o.optString("description"),
+                lat = loc?.optDouble("latitude")?.takeIf { !it.isNaN() }, lon = loc?.optDouble("longitude")?.takeIf { !it.isNaN() },
+                ship = ship, seller = o.optString("user_id")
+            )
         }
     }
 }
@@ -170,7 +190,10 @@ object Vinted {
                 box?.optString("first_line") ?: "", box?.optString("second_line") ?: ""
             ).filter { it.isNotBlank() }.joinToString(" · ")
             val img = o.optJSONObject("photo")?.optString("url")?.ifBlank { null }
-            Item(id, SRC_VINTED, o.optString("title") + if (extra.isNotEmpty()) " ($extra)" else "", priceOf(o.opt("price")), link, img, extra)
+            Item(
+                id, SRC_VINTED, o.optString("title") + if (extra.isNotEmpty()) " ($extra)" else "", priceOf(o.opt("price")), link, img, extra,
+                seller = o.optJSONObject("user")?.optString("id") ?: ""
+            )
         }
     }
 }

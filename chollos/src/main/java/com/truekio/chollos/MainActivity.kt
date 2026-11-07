@@ -35,6 +35,13 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -163,21 +170,31 @@ private fun DealCard(d: Deal, df: DateFormat, isSaved: Boolean, onSave: () -> Un
     val ctx = LocalContext.current
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            Column(Modifier.fillMaxWidth().clickable {
+            Row(Modifier.fillMaxWidth().clickable {
                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(d.item.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(sourceLabel(d.item.source), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Text("  ·  " + df.format(Date(d.time)), fontSize = 12.sp)
+                if (d.item.image != null) {
+                    AsyncImage(
+                        model = d.item.image, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(88.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
                 }
-                Text(d.item.title, Modifier.padding(top = 4.dp), fontWeight = FontWeight.Medium)
-                if (d.item.price > 0) Text(Checker.fmt(d.item.price), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(d.reason + " · " + d.searchName, fontSize = 12.sp)
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(sourceLabel(d.item.source), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text("  ·  " + df.format(Date(d.time)), fontSize = 12.sp)
+                    }
+                    Text(d.item.title, Modifier.padding(top = 2.dp), fontWeight = FontWeight.Medium, maxLines = 2)
+                    if (d.item.price > 0) Text(Checker.fmt(d.item.price), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(d.reason + " · " + d.searchName, fontSize = 12.sp)
+                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 if (isSaved) TextButton(onClick = {}, enabled = false) { Text("★ Guardado") }
                 else TextButton(onClick = onSave) { Text("☆ Guardar") }
                 TextButton(onClick = onRemove) { Text(removeLabel) }
+                if (d.item.seller.isNotBlank() && !isSaved) TextButton(onClick = { Store.blockSeller(d.item); Store.dismiss(d) }) { Text("🚫 Vendedor") }
             }
         }
     }
@@ -284,6 +301,13 @@ private fun SettingsScreen() {
                 FilterChip(selected = radius == km, onClick = { Store.setRadius(km) }, label = { Text(if (km == 0) "Toda España" else "$km km") })
             }
         }
+        val orShip by Store.orShip.collectAsState()
+        val blocked by Store.blocked.collectAsState()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = orShip, onCheckedChange = { Store.setOrShip(it) })
+            Text("  También anuncios con envío (aunque estén lejos)", Modifier.weight(1f))
+        }
+        if (blocked.isNotEmpty()) OutlinedButton(onClick = { Store.clearBlocked() }) { Text("Desbloquear ${blocked.size} vendedores") }
         Text("Revisar cada", fontWeight = FontWeight.Bold)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { m ->
