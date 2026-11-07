@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,9 +196,16 @@ private fun Empty(title: String, text: String) {
 private fun DealsScreen() {
     val ctx = LocalContext.current
     val deals by Store.deals.collectAsState()
+    val searches by Store.searches.collectAsState()
     val loading by Store.loading.collectAsState()
     val lastRun by Store.lastRun.collectAsState()
-    val scope = rememberCoroutineScope()
+    var selected by remember { mutableStateOf<String?>(null) }
+    var byPrice by remember { mutableStateOf(false) }
+    // Si se borra la búsqueda seleccionada, volvemos a "Todos"
+    if (selected != null && searches.none { it.id == selected }) selected = null
+    val shown = deals
+        .filter { selected == null || it.searchId == selected }
+        .let { l -> if (byPrice) l.sortedBy { if (it.item.price > 0) it.item.price else Double.MAX_VALUE } else l.sortedByDescending { it.time } }
     val sub = when {
         loading -> "Buscando…"
         lastRun == 0L -> "Aún sin revisar"
@@ -205,19 +213,31 @@ private fun DealsScreen() {
     }
     Column(Modifier.fillMaxSize()) {
         Header("Chollos", sub) {
+            TextButton(onClick = { byPrice = !byPrice }) { Text(if (byPrice) "Más baratos" else "Recientes") }
             IconButton(onClick = { if (!loading) Checker.runAsync(ctx) }) {
                 if (loading) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Default.Refresh, "Buscar ahora")
             }
         }
-        if (deals.isEmpty()) {
+        if (searches.size > 1 && deals.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip(selected = selected == null, onClick = { selected = null }, label = { Text("Todos · ${deals.size}") })
+                searches.forEach { sr ->
+                    val n = deals.count { it.searchId == sr.id }
+                    Chip(selected = selected == sr.id, onClick = { selected = sr.id }, label = { Text("${sr.query} · $n") })
+                }
+            }
+        }
+        if (shown.isEmpty()) {
             Empty(
                 if (loading) "Buscando…" else "Sin chollos por ahora",
-                "Crea una búsqueda en la pestaña Búsquedas. Cuando salga un anuncio por debajo de tu precio, aparecerá aquí y te llegará un aviso."
+                if (deals.isEmpty()) "Crea una búsqueda en la pestaña Búsquedas. Cuando salga un anuncio por debajo de tu precio, aparecerá aquí y te llegará un aviso."
+                else "No hay chollos de esta búsqueda."
             )
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(deals, key = { it.item.source + it.item.id }) { d ->
+                items(shown, key = { it.item.source + it.item.id }) { d ->
                     DealCard(d, saved = false, onSave = { Store.save(d) }, onDismiss = { Store.dismiss(d) },
                         onBlock = { Store.blockSeller(d.item); Store.dismiss(d) })
                 }
