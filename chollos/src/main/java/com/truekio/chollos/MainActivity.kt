@@ -224,7 +224,6 @@ private fun AddSearchDialog(onDismiss: () -> Unit, onAdd: (Search) -> Unit) {
     )
 }
 
-@Composable
 private fun words(s: String) = s.split(",", ";").map { it.trim() }.filter { it.isNotEmpty() }
 
 @Composable
