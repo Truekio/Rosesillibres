@@ -79,34 +79,73 @@ object Wallapop {
 }
 
 object Vinted {
-    private var cookie: String = ""
-    private var cookieAt = 0L
+    private const val WWW = "https://www.vinted.es"
+    private const val API = "https://api.vinted.es"
+    private var cookie = ""
+    private var anonId = ""
+    private var csrf = ""
+    private var token = ""
+    private var warmAt = 0L
 
-    private fun session(force: Boolean) {
-        if (!force && cookie.isNotEmpty() && System.currentTimeMillis() - cookieAt < 20 * 60_000) return
-        val r = http("https://www.vinted.es/", mapOf("Accept" to "text/html"))
-        cookie = r.cookies.joinToString("; ") { it.substringBefore(';') }
-        cookieAt = System.currentTimeMillis()
+    /** Vinted (desde sept. 2026) pide token anónimo, anon-id y csrf, que da la propia web al cargar la portada. */
+    private fun warmUp(force: Boolean) {
+        if (!force && token.isNotEmpty() && System.currentTimeMillis() - warmAt < 15 * 60_000) return
+        val c = URL("$WWW/").openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 15000; c.readTimeout = 20000
+            c.setRequestProperty("User-Agent", UA)
+            c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+            c.setRequestProperty("Accept-Language", "es-ES,es;q=0.9")
+            if (c.responseCode !in 200..299) error("portada HTTP ${c.responseCode}")
+            val cookies = c.headerFields["Set-Cookie"].orEmpty().map { it.substringBefore(';') }
+            cookie = cookies.joinToString("; ")
+            token = cookies.firstOrNull { it.startsWith("access_token_web=") }?.substringAfter('=') ?: ""
+            anonId = c.getHeaderField("X-Anon-Id")?.trim() ?: ""
+            val body = c.inputStream.bufferedReader().use { it.readText().take(600_000) }
+            val k = body.indexOf("CSRF_TOKEN")
+            csrf = if (k >= 0)
+                Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+                    .find(body.substring(k, minOf(body.length, k + 300)))?.value ?: "" else ""
+            warmAt = System.currentTimeMillis()
+        } finally {
+            c.disconnect()
+        }
     }
 
     fun search(q: String, maxPrice: Double?): List<Item> {
-        var url = "https://www.vinted.es/api/v2/catalog/items?search_text=${enc(q)}&order=newest_first&per_page=40"
-        if (maxPrice != null) url += "&price_to=${maxPrice.toInt()}"
+        val url = "$API/svc-catalogue/items?search_text=${enc(q)}&order=newest_first&per_page=40&page=1" +
+            (if (maxPrice != null) "&price_to=${maxPrice.toInt()}" else "")
         var r: Resp? = null
         for (attempt in 0..1) {
-            session(force = attempt > 0)
-            r = http(url, mapOf("Accept" to "application/json", "Cookie" to cookie))
+            warmUp(force = attempt > 0)
+            val h = mutableMapOf(
+                "Accept" to "application/json, text/plain, */*",
+                "Origin" to WWW, "Referer" to "$WWW/",
+                "Locale" to "es", "Platform" to "web", "X-Next-App" to "marketplace-web",
+                "Cookie" to cookie
+            )
+            if (token.isNotEmpty()) h["Authorization"] = "Bearer $token"
+            if (anonId.isNotEmpty()) h["X-Anon-Id"] = anonId
+            if (csrf.isNotEmpty()) h["X-Csrf-Token"] = csrf
+            r = http(url, h)
             if (r.code == 200) break
         }
-        if (r == null || r.code != 200) error("Vinted HTTP ${r?.code}")
-        val arr = JSONObject(r.body).optJSONArray("items") ?: return emptyList()
+        if (r == null || r.code != 200) error("Vinted HTTP ${r?.code} (token=${token.isNotEmpty()}, anon=${anonId.isNotEmpty()}, csrf=${csrf.isNotEmpty()})")
+        val root = JSONObject(r.body)
+        val arr = root.optJSONArray("items") ?: root.optJSONArray("catalog_items")
+            ?: error("respuesta sin lista de anuncios; claves: " + root.keys().asSequence().take(8).joinToString(","))
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             val id = o.optString("id").ifBlank { return@mapNotNull null }
-            val link = o.optString("url").ifBlank { "https://www.vinted.es/items/$id" }
-            val extra = listOf(o.optString("brand_title"), o.optString("size_title")).filter { it.isNotBlank() }.joinToString(" · ")
-            val title = o.optString("title") + if (extra.isNotEmpty()) " ($extra)" else ""
-            Item(id, SRC_VINTED, title, priceOf(o.opt("price")), link, o.optJSONObject("photo")?.optString("url")?.ifBlank { null }, extra)
+            var link = o.optString("url").ifBlank { "/items/$id" }
+            if (link.startsWith("/")) link = WWW + link
+            val box = o.optJSONObject("item_box")
+            val extra = listOf(
+                o.optString("brand_title"), o.optString("size_title"),
+                box?.optString("first_line") ?: "", box?.optString("second_line") ?: ""
+            ).filter { it.isNotBlank() }.joinToString(" · ")
+            val img = o.optJSONObject("photo")?.optString("url")?.ifBlank { null }
+            Item(id, SRC_VINTED, o.optString("title") + if (extra.isNotEmpty()) " ($extra)" else "", priceOf(o.opt("price")), link, img, extra)
         }
     }
 }
